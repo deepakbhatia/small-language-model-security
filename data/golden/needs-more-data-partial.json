@@ -1,0 +1,25 @@
+{
+  "id": "needs-more-data-partial",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-08T09:00:00Z\",\"source\":\"sysmon\",\"host\":\"wkstn-003\",\"user\":\"alice\",\"raw\":{\"EventID\":1,\"Image\":\"C:\\\\Windows\\\\System32\\\\systeminfo.exe\",\"CommandLine\":\"systeminfo.exe\"},\"message\":\"systeminfo.exe\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"needs_more_data\",\"category\":\"discovery\",\"summary\":\"Ambiguous discovery activity; need more telemetry.\"},\"techniques\":[{\"id\":\"T1082\",\"name\":\"System Information Discovery\",\"tactic\":\"Discovery\",\"confidence\":0.4}],\"severity\":{\"level\":\"informational\",\"score\":15,\"rationale\":\"Rule/scenario severity for T1082\"},\"confidence\":0.4,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.CommandLine\",\"value\":\"systeminfo.exe\",\"why\":\"Single discovery binary; context incomplete.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"hunt\",\"action\":\"Collect additional process and network telemetry\",\"d3fend_id\":\"D3-NTA\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "needs-more-data"
+  }
+}

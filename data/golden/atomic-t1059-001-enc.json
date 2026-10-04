@@ -1,0 +1,25 @@
+{
+  "id": "atomic-t1059-001-enc",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-02T08:15:00Z\",\"source\":\"sysmon\",\"host\":\"srv-finance-01\",\"user\":\"svc_backup\",\"raw\":{\"EventID\":1,\"Image\":\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"CommandLine\":\"powershell.exe -NoP -Enc SQBFAFgA\"},\"message\":\"powershell.exe -NoP -Enc SQBFAFgA\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"true_positive\",\"category\":\"execution\",\"summary\":\"Encoded PowerShell on high-value host.\"},\"techniques\":[{\"id\":\"T1059.001\",\"name\":\"PowerShell\",\"tactic\":\"Execution\",\"confidence\":0.9}],\"severity\":{\"level\":\"critical\",\"score\":90,\"rationale\":\"Rule/scenario severity for T1059.001\"},\"confidence\":0.9,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.CommandLine\",\"value\":\"powershell.exe -NoP -Enc SQBFAFgA\",\"why\":\"Encoded PowerShell execution on finance server.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Isolate host and capture PowerShell transcription logs\",\"d3fend_id\":\"D3-NI\"},{\"priority\":2,\"type\":\"hunt\",\"action\":\"Search estate for encoded PowerShell and same parent hash\",\"d3fend_id\":\"D3-NTA\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "atomic-t1059-001"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "fp-admin-software-deploy",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-04T10:00:00Z\",\"source\":\"sysmon\",\"host\":\"img-builder-02\",\"user\":\"svc_sccm\",\"raw\":{\"EventID\":1,\"Image\":\"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\"ParentImage\":\"C:\\\\Program Files\\\\SCCM\\\\ccmexec.exe\",\"CommandLine\":\"powershell.exe -File C:\\\\Windows\\\\CCM\\\\Scripts\\\\Deploy.ps1\"},\"message\":\"powershell.exe -File C:\\\\Windows\\\\CCM\\\\Scripts\\\\Deploy.ps1\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"benign_true_positive\",\"category\":\"execution\",\"summary\":\"SCCM-driven PowerShell deployment \u2014 benign true positive.\"},\"techniques\":[{\"id\":\"T1059.001\",\"name\":\"PowerShell\",\"tactic\":\"Execution\",\"confidence\":0.35}],\"severity\":{\"level\":\"low\",\"score\":20,\"rationale\":\"Rule/scenario severity for T1059.001\"},\"confidence\":0.35,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.ParentImage\",\"value\":\"C:\\\\Program Files\\\\SCCM\\\\ccmexec.exe\",\"why\":\"Known software deployment parent; expected admin activity.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Isolate host and capture PowerShell transcription logs\",\"d3fend_id\":\"D3-NI\"},{\"priority\":2,\"type\":\"hunt\",\"action\":\"Search estate for encoded PowerShell and same parent hash\",\"d3fend_id\":\"D3-NTA\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "fp-admin-software"
+  }
+}

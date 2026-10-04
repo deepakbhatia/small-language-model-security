@@ -1,0 +1,14 @@
+stage: 2
+base_model: fdtn-ai/Foundation-Sec-8B
+train_file: data/processed/seed/train.jsonl
+val_file: data/processed/seed/val.jsonl
+output_dir: checkpoints/sei-sft-stage2
+resume_adapter: checkpoints/sei-sft-stage1/adapter
+lora_r: 32
+lora_alpha: 64
+epochs: 2
+batch_size: 1
+grad_accum: 16
+lr: 1.0e-4
+max_length: 4096
+dry_run: false

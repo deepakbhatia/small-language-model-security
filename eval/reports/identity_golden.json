@@ -1,0 +1,48 @@
+{
+  "n": 8,
+  "disposition": {
+    "macro_f1": 1.0,
+    "per_class": {
+      "benign_true_positive": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "needs_more_data": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "true_positive": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "support": {
+      "true_positive": 6,
+      "benign_true_positive": 1,
+      "needs_more_data": 1
+    }
+  },
+  "techniques": {
+    "exact_id_precision": 1.0,
+    "exact_id_recall": 1.0,
+    "exact_id_f1": 1.0,
+    "parent_tactic_accuracy": 1.0
+  },
+  "severity": {
+    "accuracy": 1.0,
+    "ordinal_mae": 0.0
+  },
+  "evidence": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "actions": {
+    "valid_type_rate": 1.0,
+    "valid_d3fend_rate": 1.0,
+    "overlong_action_rate": 0.0
+  }
+}

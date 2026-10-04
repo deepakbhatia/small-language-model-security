@@ -1,0 +1,5 @@
+# Pinned ATT&CK version for SEI v1
+version: "16.1"
+stix_source: "https://github.com/mitre-attack/attack-stix-data"
+enterprise_bundle: "enterprise-attack/enterprise-attack.json"
+note: "Regenerate technique_ids.txt via scripts/download_attack.py"

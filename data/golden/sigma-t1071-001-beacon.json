@@ -1,0 +1,25 @@
+{
+  "id": "sigma-t1071-001-beacon",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-06T11:05:00Z\",\"source\":\"suricata\",\"host\":\"wkstn-077\",\"user\":null,\"raw\":{\"rule\":\"ET MALWARE Cobalt Strike Beacon\",\"dest_ip\":\"198.51.100.23\",\"message\":\"ET MALWARE Cobalt Strike Beacon: malleable c2\"},\"message\":\"ET MALWARE Cobalt Strike Beacon: malleable c2\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"true_positive\",\"category\":\"command_and_control\",\"summary\":\"Cobalt Strike HTTPS beacon detected.\"},\"techniques\":[{\"id\":\"T1071.001\",\"name\":\"Web Protocols\",\"tactic\":\"Command and Control\",\"confidence\":0.85}],\"severity\":{\"level\":\"high\",\"score\":80,\"rationale\":\"Rule/scenario severity for T1071.001\"},\"confidence\":0.85,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.message\",\"value\":\"ET MALWARE Cobalt Strike Beacon: malleable c2\",\"why\":\"IDS signature for known C2 framework.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Block C2 domain/IP and isolate beaconing host\",\"d3fend_id\":\"D3-DENY\"},{\"priority\":2,\"type\":\"hunt\",\"action\":\"Pivot on JA3/user-agent and rare destinations\",\"d3fend_id\":\"D3-NTA\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "sigma-t1071-001"
+  }
+}

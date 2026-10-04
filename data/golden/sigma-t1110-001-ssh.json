@@ -1,0 +1,25 @@
+{
+  "id": "sigma-t1110-001-ssh",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-03T03:22:00Z\",\"source\":\"auth\",\"host\":\"bastion-1\",\"user\":\"root\",\"raw\":{\"program\":\"sshd\",\"message\":\"Failed password for root from 203.0.113.50 port 52221 ssh2\",\"src_ip\":\"203.0.113.50\",\"count\":42},\"message\":\"Failed password for root from 203.0.113.50 port 52221 ssh2\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"true_positive\",\"category\":\"credential_access\",\"summary\":\"SSH brute force against bastion.\"},\"techniques\":[{\"id\":\"T1110.001\",\"name\":\"Password Guessing\",\"tactic\":\"Credential Access\",\"confidence\":0.8}],\"severity\":{\"level\":\"medium\",\"score\":55,\"rationale\":\"Rule/scenario severity for T1110.001\"},\"confidence\":0.8,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.message\",\"value\":\"Failed password for root from 203.0.113.50 port 52221 ssh2\",\"why\":\"Repeated SSH failures indicative of password guessing.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Block source IP at edge and lock targeted accounts\",\"d3fend_id\":\"D3-DENY\"},{\"priority\":2,\"type\":\"tune_detection\",\"action\":\"Raise threshold or suppress known scanner if FP\",\"d3fend_id\":\"D3-SCF\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "sigma-t1110-001"
+  }
+}

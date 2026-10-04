@@ -1,0 +1,15 @@
+# Edge SKU: same schema SFT on Qwen2.5-1.5B-Instruct (Apache-2.0)
+stage: 4
+base_model: Qwen/Qwen2.5-1.5B-Instruct
+train_file: data/processed/seed/train.jsonl
+val_file: data/processed/seed/val.jsonl
+output_dir: checkpoints/sei-1.5b-edge
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+epochs: 3
+batch_size: 2
+grad_accum: 8
+lr: 1.0e-4
+max_length: 3072
+dry_run: false

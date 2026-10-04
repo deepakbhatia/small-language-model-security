@@ -1,0 +1,32 @@
+# License allowlist for commercial-safe training corpora.
+# Rows whose meta.license is not in allowed will be rejected by compose filters.
+
+attack_version: "16.1"
+
+allowed_licenses:
+  - Apache-2.0
+  - MIT
+  - CDLA-Permissive-2.0
+  - CC0-1.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ODC-By
+  - public-domain
+
+# Usable with attribution / special terms — track in meta, do not redistribute rule text blindly
+conditional_licenses:
+  - name: DRL-1.1
+    notes: SigmaHQ — credit authors on rules and matches; OK for weak labels
+  - name: Llama-3.1-Community
+    notes: Foundation-Sec backbone — ship NOTICE; MAU/naming apply to Llama weights
+
+denied_licenses:
+  - CC-BY-NC-SA-4.0   # SecEval
+  - Elastic-2.0       # Elastic detection-rules redistribution friction
+  - unknown
+  - proprietary
+
+denied_sources:
+  - virustotal-public-scrape
+  - seceval
+  - elastic-detection-rules-text

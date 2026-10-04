@@ -1,0 +1,25 @@
+{
+  "id": "atomic-t1059-003-whoami",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-01T12:00:00Z\",\"source\":\"sysmon\",\"host\":\"wkstn-042\",\"user\":\"jdoe\",\"raw\":{\"EventID\":1,\"Image\":\"C:\\\\Windows\\\\System32\\\\cmd.exe\",\"ParentImage\":\"C:\\\\Users\\\\jdoe\\\\payload.exe\",\"CommandLine\":\"cmd.exe /c whoami\"},\"message\":\"cmd.exe /c whoami\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"true_positive\",\"category\":\"execution\",\"summary\":\"Suspicious cmd spawned by user payload.\"},\"techniques\":[{\"id\":\"T1059.003\",\"name\":\"Windows Command Shell\",\"tactic\":\"Execution\",\"confidence\":0.88}],\"severity\":{\"level\":\"high\",\"score\":75,\"rationale\":\"Rule/scenario severity for T1059.003\"},\"confidence\":0.88,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.CommandLine\",\"value\":\"cmd.exe /c whoami\",\"why\":\"Interactive recon via cmd under non-system parent.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Isolate host and preserve process tree\",\"d3fend_id\":\"D3-NI\"},{\"priority\":2,\"type\":\"eradicate\",\"action\":\"Remove malicious parent payload and block hash\",\"d3fend_id\":\"D3-ER\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "atomic-t1059-003"
+  }
+}

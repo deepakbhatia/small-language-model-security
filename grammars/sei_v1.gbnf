@@ -1,0 +1,66 @@
+# SEI v1 GBNF — constrained decoding for llama.cpp / compatible runtimes.
+# Technique ID enum is intentionally a pattern; for production air-gap bundles
+# regenerate this file with an explicit list from data/attack/v16.1/technique_ids.txt
+# via: python scripts/build_grammar.py
+
+root ::= sei-obj
+
+sei-obj ::= "{" ws incident-kv "," ws techniques-kv "," ws severity-kv "," ws confidence-kv "," ws evidence-kv "," ws actions-kv ws "}"
+
+ws ::= [ \t\n]*
+
+incident-kv ::= "\"incident\"" ws ":" ws "{" ws
+  "\"disposition\"" ws ":" ws disposition "," ws
+  "\"category\"" ws ":" ws string "," ws
+  "\"summary\"" ws ":" ws string
+  ws "}"
+
+disposition ::= "\"true_positive\"" | "\"false_positive\"" | "\"benign_true_positive\"" | "\"needs_more_data\""
+
+techniques-kv ::= "\"techniques\"" ws ":" ws "[" ws techniques-list? ws "]"
+techniques-list ::= technique-obj ("," ws technique-obj)*
+technique-obj ::= "{" ws
+  "\"id\"" ws ":" ws technique-id "," ws
+  "\"name\"" ws ":" ws string "," ws
+  "\"tactic\"" ws ":" ws string "," ws
+  "\"confidence\"" ws ":" ws number
+  ws "}"
+
+technique-id ::= "\"T" [0-9] [0-9] [0-9] [0-9] ("." [0-9] [0-9] [0-9])? "\""
+
+severity-kv ::= "\"severity\"" ws ":" ws "{" ws
+  "\"level\"" ws ":" ws severity-level "," ws
+  "\"score\"" ws ":" ws integer "," ws
+  "\"rationale\"" ws ":" ws string
+  ws "}"
+
+severity-level ::= "\"informational\"" | "\"low\"" | "\"medium\"" | "\"high\"" | "\"critical\""
+
+confidence-kv ::= "\"confidence\"" ws ":" ws number
+
+evidence-kv ::= "\"evidence\"" ws ":" ws "[" ws evidence-list? ws "]"
+evidence-list ::= evidence-obj ("," ws evidence-obj)*
+evidence-obj ::= "{" ws
+  "\"telemetry_index\"" ws ":" ws integer "," ws
+  "\"field\"" ws ":" ws string "," ws
+  "\"value\"" ws ":" ws string "," ws
+  "\"why\"" ws ":" ws string
+  ws "}"
+
+actions-kv ::= "\"recommended_actions\"" ws ":" ws "[" ws actions-list? ws "]"
+actions-list ::= action-obj ("," ws action-obj)*
+action-obj ::= "{" ws
+  "\"priority\"" ws ":" ws [1-5] "," ws
+  "\"type\"" ws ":" ws action-type "," ws
+  "\"action\"" ws ":" ws string ("," ws "\"d3fend_id\"" ws ":" ws string)?
+  ws "}"
+
+action-type ::= "\"contain\"" | "\"eradicate\"" | "\"recover\"" | "\"hunt\"" | "\"notify\"" | "\"tune_detection\""
+
+string ::= "\"" (
+  [^"\\] |
+  "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
+)* "\""
+
+number ::= ("0" | [1-9] [0-9]*) ("." [0-9]+)?
+integer ::= "0" | [1-9] [0-9]*

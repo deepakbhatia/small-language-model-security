@@ -1,0 +1,64 @@
+# Mapping of common ATT&CK techniques to D3FEND-style action templates.
+T1059.001:
+  - priority: 1
+    type: contain
+    action: Isolate host and capture PowerShell transcription logs
+    d3fend_id: D3-NI
+  - priority: 2
+    type: hunt
+    action: Search estate for encoded PowerShell and same parent hash
+    d3fend_id: D3-NTA
+T1059.003:
+  - priority: 1
+    type: contain
+    action: Isolate host and preserve process tree
+    d3fend_id: D3-NI
+  - priority: 2
+    type: eradicate
+    action: Remove malicious parent payload and block hash
+    d3fend_id: D3-ER
+T1003.001:
+  - priority: 1
+    type: contain
+    action: Isolate host; reset credentials for accessed accounts
+    d3fend_id: D3-ISOL
+  - priority: 2
+    type: notify
+    action: Escalate credential-dumping incident to IR lead
+    d3fend_id: D3-AL
+T1110.001:
+  - priority: 1
+    type: contain
+    action: Block source IP at edge and lock targeted accounts
+    d3fend_id: D3-DENY
+  - priority: 2
+    type: tune_detection
+    action: Raise threshold or suppress known scanner if FP
+    d3fend_id: D3-SCF
+T1071.001:
+  - priority: 1
+    type: contain
+    action: Block C2 domain/IP and isolate beaconing host
+    d3fend_id: D3-DENY
+  - priority: 2
+    type: hunt
+    action: Pivot on JA3/user-agent and rare destinations
+    d3fend_id: D3-NTA
+T1547.001:
+  - priority: 1
+    type: eradicate
+    action: Remove persistence Run key / startup artifact
+    d3fend_id: D3-ER
+  - priority: 2
+    type: recover
+    action: Restore clean autorun baseline
+    d3fend_id: D3-BA
+default:
+  - priority: 1
+    type: hunt
+    action: Collect additional telemetry and correlate related alerts
+    d3fend_id: D3-NTA
+  - priority: 2
+    type: notify
+    action: Queue for analyst review
+    d3fend_id: D3-AL

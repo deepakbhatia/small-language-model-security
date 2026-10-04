@@ -1,0 +1,20 @@
+Security Event Intelligence SLM
+Copyright contributors
+
+This product includes software developed for structured SOC triage.
+
+---------------------------------------------------------------------------
+Foundation-Sec-8B / Llama 3.1
+
+Llama 3.1 is licensed under the Llama 3.1 Community License,
+Copyright © Meta Platforms, Inc. All Rights Reserved.
+
+Cisco changes to Llama-3.1-FoundationAI-SecurityLLM-base-8B
+are licensed under the Apache 2.0 License, Copyright Cisco Systems, Inc.
+
+See: https://huggingface.co/fdtn-ai/Foundation-Sec-8B
+---------------------------------------------------------------------------
+MITRE ATT&CK® and D3FEND™ are trademarks of The MITRE Corporation.
+ATT&CK content is available under MITRE's terms for research and commercial use
+with copyright notice retained.
+---------------------------------------------------------------------------

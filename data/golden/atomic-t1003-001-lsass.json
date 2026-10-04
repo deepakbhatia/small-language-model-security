@@ -1,0 +1,25 @@
+{
+  "id": "atomic-t1003-001-lsass",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a SOC triage model. Emit ONLY valid SEI JSON. Technique IDs must be from ATT&CK v16.1. Evidence values must be exact substrings of the telemetry. Use needs_more_data / empty lists when unsupported."
+    },
+    {
+      "role": "user",
+      "content": "TELEMETRY:\n{\"timestamp\":\"2024-06-05T19:41:00Z\",\"source\":\"sysmon\",\"host\":\"dc01\",\"user\":\"admin\",\"raw\":{\"EventID\":10,\"TargetImage\":\"C:\\\\Windows\\\\System32\\\\lsass.exe\",\"SourceImage\":\"C:\\\\Users\\\\admin\\\\procdump.exe\",\"GrantedAccess\":\"0x1010\"},\"message\":\"Process access lsass.exe by procdump.exe\"}\nCONTEXT:\n{\"asset_criticality\":\"high\",\"environment\":\"prod\"}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"incident\":{\"disposition\":\"true_positive\",\"category\":\"credential_access\",\"summary\":\"LSASS access consistent with credential dumping.\"},\"techniques\":[{\"id\":\"T1003.001\",\"name\":\"LSASS Memory\",\"tactic\":\"Credential Access\",\"confidence\":0.92}],\"severity\":{\"level\":\"critical\",\"score\":95,\"rationale\":\"Rule/scenario severity for T1003.001\"},\"confidence\":0.92,\"evidence\":[{\"telemetry_index\":0,\"field\":\"raw.TargetImage\",\"value\":\"C:\\\\Windows\\\\System32\\\\lsass.exe\",\"why\":\"Credential dumping tool accessing LSASS.\"}],\"recommended_actions\":[{\"priority\":1,\"type\":\"contain\",\"action\":\"Isolate host; reset credentials for accessed accounts\",\"d3fend_id\":\"D3-ISOL\"},{\"priority\":2,\"type\":\"notify\",\"action\":\"Escalate credential-dumping incident to IR lead\",\"d3fend_id\":\"D3-AL\"}]}"
+    }
+  ],
+  "meta": {
+    "attack_version": "16.1",
+    "source": "synthetic-atomic-sigma",
+    "license": "Apache-2.0",
+    "synthetic": true,
+    "curriculum_stage": 4,
+    "split_group": "atomic-t1003-001"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/slms/sei/schemas/sei_v1.json",
+  "title": "SecurityEventIntelligenceV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "incident",
+    "techniques",
+    "severity",
+    "confidence",
+    "evidence",
+    "recommended_actions"
+  ],
+  "properties": {
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "category", "summary"],
+      "properties": {
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "true_positive",
+            "false_positive",
+            "benign_true_positive",
+            "needs_more_data"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "techniques": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "tactic", "confidence"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"
+          },
+          "name": { "type": "string" },
+          "tactic": { "type": "string" },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "severity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "score", "rationale"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["informational", "low", "medium", "high", "critical"]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "rationale": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["telemetry_index", "field", "value", "why"],
+        "properties": {
+          "telemetry_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "field": { "type": "string" },
+          "value": { "type": "string" },
+          "why": { "type": "string", "maxLength": 300 },
+          "rule_id": { "type": "string" }
+        }
+      }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["priority", "type", "action"],
+        "properties": {
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "contain",
+              "eradicate",
+              "recover",
+              "hunt",
+              "notify",
+              "tune_detection"
+            ]
+          },
+          "action": { "type": "string", "maxLength": 300 },
+          "d3fend_id": { "type": "string" },
+          "target": { "type": "string" },
+          "automatable": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
