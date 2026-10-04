@@ -81,18 +81,25 @@ def main(argv: list[str] | None = None) -> None:
         dtype=compute_dtype,
     )
     model = prepare_model_for_kbit_training(model)
-    lora = LoraConfig(
-        r=int(cfg.get("lora_r", 32)),
-        lora_alpha=int(cfg.get("lora_alpha", 64)),
-        lora_dropout=float(cfg.get("lora_dropout", 0.05)),
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=cfg.get(
-            "target_modules",
-            ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-        ),
-    )
-    model = get_peft_model(model, lora)
+    resume_adapter = cfg.get("resume_adapter")
+    if resume_adapter:
+        from peft import PeftModel
+
+        print(f"[sft] loading adapter for resume → {resume_adapter}")
+        model = PeftModel.from_pretrained(model, resume_adapter, is_trainable=True)
+    else:
+        lora = LoraConfig(
+            r=int(cfg.get("lora_r", 32)),
+            lora_alpha=int(cfg.get("lora_alpha", 64)),
+            lora_dropout=float(cfg.get("lora_dropout", 0.05)),
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=cfg.get(
+                "target_modules",
+                ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            ),
+        )
+        model = get_peft_model(model, lora)
 
     def formatting_func(row):
         return tokenizer.apply_chat_template(
@@ -113,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         warmup_steps = max(1, int(total_steps * float(cfg.get("warmup_ratio", 0.03))))
 
-    sft_args = SFTConfig(
+    sft_kwargs = dict(
         output_dir=cfg.get("output_dir", f"checkpoints/sei-sft-stage{stage}"),
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
@@ -132,6 +139,12 @@ def main(argv: list[str] | None = None) -> None:
         gradient_checkpointing=True,
         report_to=cfg.get("report_to", "none"),
     )
+    # Newer TRL defaults to chunked_nll, which crashes when model.forward is a
+    # functools.partial (common with PEFT/QLoRA). Prefer plain NLL when supported.
+    try:
+        sft_args = SFTConfig(**sft_kwargs, loss_type="nll")
+    except TypeError:
+        sft_args = SFTConfig(**sft_kwargs)
 
     trainer = SFTTrainer(
         model=model,
@@ -141,8 +154,6 @@ def main(argv: list[str] | None = None) -> None:
         processing_class=tokenizer,
         formatting_func=formatting_func,
     )
-    if adapter := cfg.get("resume_adapter"):
-        print(f"[sft] note: resume_adapter={adapter} (load via peft before train if needed)")
     trainer.train()
     out = Path(cfg.get("output_dir", f"checkpoints/sei-sft-stage{stage}")) / "adapter"
     trainer.save_model(str(out))
