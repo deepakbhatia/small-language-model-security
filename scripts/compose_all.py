@@ -58,6 +58,12 @@ def main() -> None:
     parser.add_argument("--guide-limit", type=int, default=5000)
     parser.add_argument("--guide-stage", type=int, default=1)
     parser.add_argument("--val-ratio", type=float, default=0.2, help="Fraction of split_groups for val")
+    parser.add_argument(
+        "--val-monitor-size",
+        type=int,
+        default=200,
+        help="Small val.jsonl size for per-shard checks; full holdout written to val_final.jsonl",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -77,14 +83,22 @@ def main() -> None:
             continue
         kept.append(ex)
 
-    train, val = split_by_group(kept, val_ratio=args.val_ratio, seed=args.seed)
+    train, val_full = split_by_group(kept, val_ratio=args.val_ratio, seed=args.seed)
+
+    rng = random.Random(args.seed)
+    val_shuffled = list(val_full)
+    rng.shuffle(val_shuffled)
+    monitor_n = max(0, min(int(args.val_monitor_size), len(val_shuffled)))
+    val_monitor = val_shuffled[:monitor_n]
 
     args.out.mkdir(parents=True, exist_ok=True)
     write_jsonl(args.out / "train.jsonl", train)
-    write_jsonl(args.out / "val.jsonl", val)
+    write_jsonl(args.out / "val.jsonl", val_monitor)  # fast per-shard monitor
+    write_jsonl(args.out / "val_final.jsonl", val_full)  # full holdout for last eval
     write_jsonl(args.out / "all.jsonl", kept)
     print(
-        f"wrote train={len(train)} val={len(val)} all={len(kept)} "
+        f"wrote train={len(train)} val(monitor)={len(val_monitor)} "
+        f"val_final={len(val_full)} all={len(kept)} "
         f"(dropped {dropped}, val_ratio={args.val_ratio}) → {args.out}"
     )
 
