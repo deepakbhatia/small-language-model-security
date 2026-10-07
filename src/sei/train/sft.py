@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
         lr_scheduler_type="cosine",
         warmup_steps=warmup_steps,
         logging_steps=int(cfg.get("logging_steps", 20)),
-        eval_strategy="steps",
+        eval_strategy=str(cfg.get("eval_strategy", "steps")),
         eval_steps=int(cfg.get("eval_steps", 200)),
         save_steps=int(cfg.get("save_steps", 200)),
         bf16=use_bf16,
@@ -139,6 +139,10 @@ def main(argv: list[str] | None = None) -> None:
         gradient_checkpointing=True,
         report_to=cfg.get("report_to", "none"),
     )
+    if cfg.get("max_steps") is not None:
+        sft_kwargs["max_steps"] = int(cfg["max_steps"])
+    if cfg.get("per_device_eval_batch_size") is not None:
+        sft_kwargs["per_device_eval_batch_size"] = int(cfg["per_device_eval_batch_size"])
     # Newer TRL defaults to chunked_nll, which crashes when model.forward is a
     # functools.partial (common with PEFT/QLoRA). Prefer plain NLL when supported.
     try:
@@ -150,7 +154,7 @@ def main(argv: list[str] | None = None) -> None:
         model=model,
         args=sft_args,
         train_dataset=train_ds,
-        eval_dataset=val_ds,
+        eval_dataset=val_ds if sft_kwargs.get("eval_strategy") != "no" else None,
         processing_class=tokenizer,
         formatting_func=formatting_func,
     )

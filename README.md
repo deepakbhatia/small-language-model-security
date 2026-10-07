@@ -31,6 +31,8 @@ Training tutorial (read first): [`docs/training_mechanics.md`](docs/training_mec
 
 **Kaggle (free GPU):** see [`docs/kaggle.md`](docs/kaggle.md) and [`notebooks/kaggle_train_stage1.ipynb`](notebooks/kaggle_train_stage1.ipynb).
 
+**AWS (programmatic smoke → full):** see [`docs/aws_train.md`](docs/aws_train.md) (`scripts/aws/launch.py`).
+
 ## Stack
 
 | Layer | Choice |
