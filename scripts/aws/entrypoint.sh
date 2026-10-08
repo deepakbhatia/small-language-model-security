@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full
+#   SEI_MODE=smoke|full|stage1|stage2
 #   SEI_REPO_URL=...
 #   SEI_S3_BUCKET=...          # required for artifact sync
-#   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv   # full mode
-#   SEI_ADAPTER_S3=s3://bucket/sei-adapter/
+#   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv
+#   SEI_ADAPTER_S3=s3://bucket/sei-adapter/          # write target
+#   SEI_RESUME_ADAPTER_S3=s3://bucket/sei-adapter/   # warm-start (optional)
 #   SEI_MODEL_S3=s3://bucket/models/Foundation-Sec-8B/  # optional cache
-#   SEI_GUIDE_LIMIT=20000
+#   SEI_GUIDE_LIMIT=50000
+#   SEI_GUIDE_OFFSET=20000     # stage1 continue: skip already-trained rows
+#   SEI_GUIDE_STAGE=1|2
 #   SEI_SHARD_SIZE=2000
-#   SEI_KEEP_ALIVE=0|1         # 1 = do not shutdown (debug)
-#   HF_TOKEN=...               # optional
+#   SEI_KEEP_ALIVE=0|1
+#   HF_TOKEN=...
 set -euo pipefail
 
 exec > >(tee -a /var/log/sei-train.log) 2>&1
@@ -22,9 +25,12 @@ MODE="${SEI_MODE:-smoke}"
 KEEP_ALIVE="${SEI_KEEP_ALIVE:-0}"
 BUCKET="${SEI_S3_BUCKET:-}"
 ADAPTER_S3="${SEI_ADAPTER_S3:-}"
+RESUME_ADAPTER_S3="${SEI_RESUME_ADAPTER_S3:-}"
 GUIDE_S3="${SEI_GUIDE_S3:-}"
 MODEL_S3="${SEI_MODEL_S3:-}"
 GUIDE_LIMIT="${SEI_GUIDE_LIMIT:-20000}"
+GUIDE_OFFSET="${SEI_GUIDE_OFFSET:-0}"
+GUIDE_STAGE="${SEI_GUIDE_STAGE:-1}"
 SHARD_SIZE="${SEI_SHARD_SIZE:-2000}"
 
 cleanup() {
@@ -75,7 +81,6 @@ activate_python() {
   apt-get update -y
   PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
   apt-get install -y "python${PY_VER}-venv" python3-pip || apt-get install -y python3-venv python3-pip
-  # Prefer system site-packages so a preinstalled torch (if any) is visible.
   python3 -m venv --system-site-packages .venv
   # shellcheck disable=SC1091
   source .venv/bin/activate
@@ -91,14 +96,12 @@ if [[ -n "${HF_TOKEN:-}" ]]; then
   export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 fi
 
-# GPU check
 python - <<'PY'
 import torch
 print("[sei] cuda=", torch.cuda.is_available(), "device=", torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)
 assert torch.cuda.is_available(), "CUDA not available"
 PY
 
-# Optional: warm model cache from S3 (speeds smoke/full a lot)
 if [[ -n "$MODEL_S3" ]]; then
   mkdir -p /opt/hf-cache
   export HF_HOME=/opt/hf-cache
@@ -106,11 +109,53 @@ if [[ -n "$MODEL_S3" ]]; then
   aws s3 sync "$MODEL_S3" /opt/hf-cache/ || true
 fi
 
+pull_resume_adapter() {
+  local dest="$1"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    return 0
+  fi
+  echo "[sei] pulling resume adapter from $RESUME_ADAPTER_S3 → $dest"
+  mkdir -p "$dest"
+  aws s3 sync "$RESUME_ADAPTER_S3" "$dest/"
+  if [[ ! -f "$dest/adapter_model.safetensors" && ! -f "$dest/adapter_model.bin" ]]; then
+    echo "[sei] ERROR: resume adapter missing weights under $dest" >&2
+    ls -la "$dest" || true
+    exit 3
+  fi
+}
+
+run_compose_and_shard() {
+  local out_dir="$1"
+  local guide_stage="$2"
+  local seed_stages="$3"
+  mkdir -p "$out_dir"
+  python scripts/compose_all.py \
+    --out "$out_dir" \
+    --guide /tmp/GUIDE_Train.csv \
+    --guide-limit "$GUIDE_LIMIT" \
+    --guide-offset "$GUIDE_OFFSET" \
+    --guide-stage "$guide_stage" \
+    --seed-stages "$seed_stages" \
+    --val-ratio 0.2 \
+    --val-monitor-size 200
+  python scripts/shard_jsonl.py \
+    --input "$out_dir/train.jsonl" \
+    --out-dir "$out_dir/shards" \
+    --shard-size "$SHARD_SIZE"
+}
+
+require_guide() {
+  if [[ -z "$GUIDE_S3" ]]; then
+    echo "SEI_GUIDE_S3 is required for mode=$MODE" >&2
+    exit 2
+  fi
+  aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+}
+
 if [[ "$MODE" == "smoke" ]]; then
   echo "[sei] SMOKE: seed data + 2 train steps + sync + shutdown"
   python scripts/compose_synthetic.py --out data/processed/seed
   mkdir -p data/processed/v1/shards
-  # one tiny shard from seed train
   head -n 8 data/processed/seed/train.jsonl > data/processed/v1/shards/train_shard00.jsonl
   cp data/processed/seed/val.jsonl data/processed/v1/val.jsonl
   ADAPTER_ARG=()
@@ -133,29 +178,26 @@ if [[ "$MODE" == "smoke" ]]; then
     aws s3 cp /tmp/sei-smoke-ok.txt "s3://${BUCKET}/sei-logs/SMOKE_OK"
   fi
 
-elif [[ "$MODE" == "full" ]]; then
-  echo "[sei] FULL training"
-  if [[ -z "$GUIDE_S3" ]]; then
-    echo "SEI_GUIDE_S3 is required for full mode" >&2
-    exit 2
-  fi
-  aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
-  python scripts/compose_all.py \
-    --out data/processed/v1 \
-    --guide /tmp/GUIDE_Train.csv \
-    --guide-limit "$GUIDE_LIMIT" \
-    --guide-stage 1 \
-    --val-ratio 0.2 \
-    --val-monitor-size 200
-  python scripts/shard_jsonl.py \
-    --input data/processed/v1/train.jsonl \
-    --out-dir data/processed/v1/shards \
-    --shard-size "$SHARD_SIZE"
+elif [[ "$MODE" == "full" || "$MODE" == "stage1" ]]; then
+  # stage1: continue GUIDE (default offset/limit set by launch.py for +50k)
+  # full: backward-compatible alias (from-scratch if no resume adapter)
+  echo "[sei] STAGE1 training (mode=$MODE offset=$GUIDE_OFFSET limit=$GUIDE_LIMIT)"
+  require_guide
+  STAGE1_ADAPTER="checkpoints/sei-sft-stage1/adapter"
+  pull_resume_adapter "$STAGE1_ADAPTER"
+  run_compose_and_shard "data/processed/v1" "${GUIDE_STAGE:-1}" "1"
   ADAPTER_ARG=()
+  RESUME_ARG=()
   if [[ -n "$ADAPTER_S3" ]]; then
     ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
   fi
+  if [[ -d "$STAGE1_ADAPTER" ]]; then
+    RESUME_ARG=(--resume-adapter "$STAGE1_ADAPTER")
+  fi
   python scripts/aws/train_shards.py \
+    --base-config configs/sft_stage1.yaml \
+    --run-config configs/sft_stage1_aws.yaml \
+    --output-dir checkpoints/sei-sft-stage1 \
     --shards-dir data/processed/v1/shards \
     --val-file data/processed/v1/val.jsonl \
     --max-length 1024 \
@@ -163,9 +205,52 @@ elif [[ "$MODE" == "full" ]]; then
     --grad-accum 8 \
     --epochs 1 \
     --eval-steps 500 \
+    "${RESUME_ARG[@]}" \
     "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "STAGE1_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/STAGE1_OK"
+  fi
+
+elif [[ "$MODE" == "stage2" ]]; then
+  echo "[sei] STAGE2 training from stage-1 adapter (GUIDE stage=2 + synthetic 1,2)"
+  require_guide
+  STAGE1_ADAPTER="checkpoints/sei-sft-stage1/adapter"
+  STAGE2_ADAPTER="checkpoints/sei-sft-stage2/adapter"
+  # Prefer explicit resume; else fall back to write target's sibling stage1 prefix
+  if [[ -z "$RESUME_ADAPTER_S3" && -n "$ADAPTER_S3" ]]; then
+    # common layout: sei-adapter-stage2 ← write; sei-adapter ← stage1
+    echo "[sei] SEI_RESUME_ADAPTER_S3 unset — set it to stage-1 adapter prefix"
+  fi
+  pull_resume_adapter "$STAGE1_ADAPTER"
+  if [[ ! -d "$STAGE1_ADAPTER" ]]; then
+    echo "[sei] ERROR: stage2 requires stage-1 adapter at $STAGE1_ADAPTER (set SEI_RESUME_ADAPTER_S3)" >&2
+    exit 3
+  fi
+  run_compose_and_shard "data/processed/stage2" "2" "1,2"
+  ADAPTER_ARG=()
+  if [[ -n "$ADAPTER_S3" ]]; then
+    ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
+  fi
+  python scripts/aws/train_shards.py \
+    --base-config configs/sft_stage2.yaml \
+    --run-config configs/sft_stage2_aws.yaml \
+    --output-dir checkpoints/sei-sft-stage2 \
+    --shards-dir data/processed/stage2/shards \
+    --val-file data/processed/stage2/val.jsonl \
+    --resume-adapter "$STAGE1_ADAPTER" \
+    --max-length 1024 \
+    --batch-size 2 \
+    --grad-accum 8 \
+    --epochs 1 \
+    --eval-steps 500 \
+    --lr 5.0e-5 \
+    "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "STAGE2_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/STAGE2_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2)" >&2
   exit 2
 fi
 

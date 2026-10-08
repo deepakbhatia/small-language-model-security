@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,11 @@ def main() -> None:
     parser.add_argument("--val-file", default="data/processed/v1/val.jsonl")
     parser.add_argument("--output-dir", default="checkpoints/sei-sft-stage1")
     parser.add_argument("--adapter-s3", default="", help="s3://bucket/prefix for adapter sync")
+    parser.add_argument(
+        "--resume-adapter",
+        default="",
+        help="Warm-start from this adapter dir (copied into output_dir/adapter if needed)",
+    )
     parser.add_argument("--start-shard", type=int, default=0)
     parser.add_argument("--max-shards", type=int, default=None)
     parser.add_argument("--max-length", type=int, default=1024)
@@ -28,6 +34,12 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=None, help="Cap steps (smoke)")
     parser.add_argument("--eval-strategy", default="steps")
     parser.add_argument("--eval-steps", type=int, default=500)
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=None,
+        help="Override LR (default: 1e-4 fresh / 5e-5 when resuming)",
+    )
     args = parser.parse_args()
 
     shards = sorted(args.shards_dir.glob("train_shard*.jsonl"))
@@ -37,6 +49,20 @@ def main() -> None:
         shards = shards[: args.max_shards]
     shards = shards[args.start_shard :]
     adapter = Path(args.output_dir) / "adapter"
+
+    if args.resume_adapter:
+        src = Path(args.resume_adapter)
+        if not src.exists():
+            raise SystemExit(f"resume adapter missing: {src}")
+        if src.resolve() != adapter.resolve():
+            adapter.parent.mkdir(parents=True, exist_ok=True)
+            if adapter.exists():
+                shutil.rmtree(adapter)
+            shutil.copytree(src, adapter)
+            print(f"[train_shards] seeded adapter from {src} → {adapter}")
+
+    resuming = adapter.exists()
+    base_lr = args.lr if args.lr is not None else (5.0e-5 if resuming else 1.0e-4)
 
     for i, shard in enumerate(shards):
         global_i = args.start_shard + i
@@ -50,7 +76,7 @@ def main() -> None:
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
                 "grad_accum": args.grad_accum,
-                "lr": 1.0e-4 if global_i == 0 else 5.0e-5,
+                "lr": base_lr if global_i == 0 else min(base_lr, 5.0e-5),
                 "eval_strategy": args.eval_strategy,
                 "eval_steps": args.eval_steps,
                 "save_steps": max(args.eval_steps, 50),
@@ -61,7 +87,7 @@ def main() -> None:
         if args.max_steps is not None:
             cfg["max_steps"] = args.max_steps
             cfg["eval_strategy"] = "no"
-        if adapter.exists() and global_i > 0:
+        if adapter.exists():
             cfg["resume_adapter"] = str(adapter)
         else:
             cfg.pop("resume_adapter", None)

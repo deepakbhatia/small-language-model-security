@@ -58,7 +58,8 @@ python scripts/aws/launch.py --mode smoke --keep-alive ...
 ## Full training (after smoke)
 
 ```bash
-python scripts/aws/launch.py --mode full --wait --spot \
+# Initial stage-1 (first 20k GUIDE) — already done if sei-adapter/ exists
+python scripts/aws/launch.py --mode full --wait \
   --region us-east-1 \
   --instance-type g5.xlarge \
   --ami-id ami-XXXXXXXX \
@@ -71,6 +72,48 @@ python scripts/aws/launch.py --mode full --wait --spot \
   --guide-limit 20000 \
   --shard-size 2000
 ```
+
+## Stage-1 continue (+50k GUIDE from row 20k, resume adapter)
+
+Defaults: `--guide-offset 20000 --guide-limit 50000`.
+
+```bash
+python scripts/aws/launch.py --mode stage1 --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter/
+```
+
+Success marker: `s3://…/sei-logs/STAGE1_OK`
+
+## Stage-2 (techniques; warm-start from stage-1)
+
+```bash
+python scripts/aws/launch.py --mode stage2 --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter-stage2/ \
+  --guide-limit 50000
+```
+
+Success marker: `s3://…/sei-logs/STAGE2_OK`. Pull with:
+`aws s3 sync s3://my-sei-bucket/sei-adapter-stage2/ checkpoints/sei-sft-stage2/adapter/`
+
+**Push `main` before launching** — the instance clones the repo for `compose_all` / `train_shards` (user-data only embeds `entrypoint.sh`).
 
 ## Local smoke (no AWS)
 

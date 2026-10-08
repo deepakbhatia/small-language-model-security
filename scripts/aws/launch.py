@@ -1,53 +1,45 @@
 #!/usr/bin/env python3
-"""Launch an EC2 GPU instance that runs SEI train (smoke or full) then shuts down.
+"""Launch an EC2 GPU instance that runs SEI train (smoke/stage1/stage2) then shuts down.
 
 Examples:
-  # 1) Print user-data only (no spend)
-  python scripts/aws/launch.py --mode smoke --dry-run \\
-    --s3-bucket my-sei-bucket
+  # Smoke
+  python scripts/aws/launch.py --mode smoke --wait ...
 
-  # 2) Smoke: start → 2 train steps → sync → auto-stop
-  python scripts/aws/launch.py --mode smoke \\
-    --ami-id ami-xxxxxxxx \\
-    --subnet-id subnet-xxxxxxxx \\
-    --security-group-ids sg-xxxxxxxx \\
-    --iam-instance-profile sei-train-profile \\
-    --s3-bucket my-sei-bucket \\
-    --adapter-s3 s3://my-sei-bucket/sei-adapter/ \\
-    --wait
+  # Continue stage-1 on next 50k GUIDE rows from existing adapter
+  python scripts/aws/launch.py --mode stage1 --wait \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv \\
+    --resume-adapter-s3 s3://bucket/sei-adapter/ \\
+    --adapter-s3 s3://bucket/sei-adapter/ \\
+    --guide-offset 20000 --guide-limit 50000 ...
 
-  # 3) Full training after smoke works
-  python scripts/aws/launch.py --mode full \\
-    --ami-id ami-xxxxxxxx \\
-    --subnet-id subnet-xxxxxxxx \\
-    --security-group-ids sg-xxxxxxxx \\
-    --iam-instance-profile sei-train-profile \\
-    --s3-bucket my-sei-bucket \\
-    --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \\
-    --adapter-s3 s3://my-sei-bucket/sei-adapter/ \\
-    --guide-limit 20000 \\
-    --spot --wait
+  # Stage-2 from stage-1 checkpoint (techniques unlocked)
+  python scripts/aws/launch.py --mode stage2 --wait \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv \\
+    --resume-adapter-s3 s3://bucket/sei-adapter/ \\
+    --adapter-s3 s3://bucket/sei-adapter-stage2/ \\
+    --guide-limit 50000 ...
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import sys
 import time
 from pathlib import Path
 
 
 def build_user_data(args: argparse.Namespace, entrypoint: str) -> str:
-    # Embed entrypoint and export env for the remote bash script.
     exports = {
         "SEI_MODE": args.mode,
         "SEI_REPO_URL": args.repo_url,
         "SEI_S3_BUCKET": args.s3_bucket or "",
         "SEI_GUIDE_S3": args.guide_s3 or "",
         "SEI_ADAPTER_S3": args.adapter_s3 or "",
+        "SEI_RESUME_ADAPTER_S3": args.resume_adapter_s3 or "",
         "SEI_MODEL_S3": args.model_s3 or "",
         "SEI_GUIDE_LIMIT": str(args.guide_limit),
+        "SEI_GUIDE_OFFSET": str(args.guide_offset),
+        "SEI_GUIDE_STAGE": str(args.guide_stage),
         "SEI_SHARD_SIZE": str(args.shard_size),
         "SEI_KEEP_ALIVE": "1" if args.keep_alive else "0",
         "HF_TOKEN": args.hf_token or "",
@@ -67,8 +59,13 @@ sleep 5
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SEI AWS GPU launch (smoke|full)")
-    parser.add_argument("--mode", choices=["smoke", "full"], default="smoke")
+    parser = argparse.ArgumentParser(description="SEI AWS GPU launch (smoke|full|stage1|stage2)")
+    parser.add_argument(
+        "--mode",
+        choices=["smoke", "full", "stage1", "stage2"],
+        default="smoke",
+        help="full=legacy stage1; stage1=resume GUIDE continue; stage2=techniques from stage1 adapter",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--instance-type", default="g5.xlarge")
@@ -81,18 +78,42 @@ def main() -> None:
     parser.add_argument("--keep-alive", action="store_true", help="Do not auto-shutdown (debug)")
     parser.add_argument("--wait", action="store_true", help="Wait until instance stopped/terminated")
     parser.add_argument("--repo-url", default="https://github.com/deepakbhatia/small-language-model-security.git")
-    parser.add_argument("--s3-bucket", default="", help="Bucket for logs / SMOKE_OK")
-    parser.add_argument("--guide-s3", default="", help="s3://.../GUIDE_Train.csv (full mode)")
-    parser.add_argument("--adapter-s3", default="", help="s3://.../sei-adapter/")
+    parser.add_argument("--s3-bucket", default="", help="Bucket for logs / OK markers")
+    parser.add_argument("--guide-s3", default="", help="s3://.../GUIDE_Train.csv")
+    parser.add_argument("--adapter-s3", default="", help="s3://.../ write adapter prefix")
+    parser.add_argument(
+        "--resume-adapter-s3",
+        default="",
+        help="s3://.../ warm-start adapter (stage1 continue or stage2 from stage1)",
+    )
     parser.add_argument("--model-s3", default="", help="Optional HF cache prefix on S3")
-    parser.add_argument("--guide-limit", type=int, default=20000)
+    parser.add_argument("--guide-limit", type=int, default=None, help="Max GUIDE rows after offset")
+    parser.add_argument("--guide-offset", type=int, default=None, help="Skip first N GUIDE rows")
+    parser.add_argument("--guide-stage", type=int, default=None, help="GUIDE curriculum stage (1 or 2)")
     parser.add_argument("--shard-size", type=int, default=2000)
-    parser.add_argument("--hf-token", default="", help="Optional HF token (prefer Secrets Manager later)")
+    parser.add_argument("--hf-token", default="", help="Optional HF token")
     parser.add_argument("--volume-gb", type=int, default=150)
     args = parser.parse_args()
 
-    if args.mode == "full" and not args.guide_s3 and not args.dry_run:
-        parser.error("--guide-s3 is required for --mode full")
+    # Mode-specific defaults: stage1 continues +50k GUIDE from row 20k;
+    # stage2 trains techniques on up to 50k rows from the start at stage=2.
+    if args.guide_limit is None:
+        args.guide_limit = 50000 if args.mode in {"stage1", "stage2"} else 20000
+    if args.guide_offset is None:
+        args.guide_offset = 20000 if args.mode == "stage1" else 0
+    if args.guide_stage is None:
+        args.guide_stage = 2 if args.mode == "stage2" else 1
+
+    if args.mode in {"full", "stage1", "stage2"} and not args.guide_s3 and not args.dry_run:
+        parser.error("--guide-s3 is required for --mode full|stage1|stage2")
+    if args.mode == "stage2" and not args.resume_adapter_s3 and not args.dry_run:
+        parser.error("--resume-adapter-s3 (stage-1 adapter) is required for --mode stage2")
+    if args.mode == "stage1" and not args.resume_adapter_s3 and not args.dry_run:
+        print(
+            "WARNING: --resume-adapter-s3 unset; stage1 will train a fresh adapter "
+            "unless weights already exist on the instance.",
+            file=sys.stderr,
+        )
 
     entrypoint_path = Path(__file__).resolve().parent / "entrypoint.sh"
     entrypoint = entrypoint_path.read_text()
@@ -102,6 +123,11 @@ def main() -> None:
     print(f"mode={args.mode} instance={args.instance_type} region={args.region} spot={args.spot}")
     print(f"repo={args.repo_url}")
     print(f"guide_s3={args.guide_s3 or '-'}")
+    print(
+        f"guide_stage={args.guide_stage} offset={args.guide_offset} limit={args.guide_limit} "
+        f"shard_size={args.shard_size}"
+    )
+    print(f"resume_adapter_s3={args.resume_adapter_s3 or '-'}")
     print(f"adapter_s3={args.adapter_s3 or '-'}")
     print(f"keep_alive={args.keep_alive}")
     if args.dry_run:
@@ -190,7 +216,6 @@ def main() -> None:
     waiter.wait(InstanceIds=[instance_id])
     print("Instance running. Waiting until stopped/terminated (training + shutdown)...")
 
-    # Poll until not running/pending
     while True:
         desc = ec2.describe_instances(InstanceIds=[instance_id])
         state = desc["Reservations"][0]["Instances"][0]["State"]["Name"]
@@ -199,23 +224,30 @@ def main() -> None:
             break
         time.sleep(30)
 
-    # Final state
     desc = ec2.describe_instances(InstanceIds=[instance_id])
     state = desc["Reservations"][0]["Instances"][0]["State"]["Name"]
     print(f"Done. final_state={state}")
-    if args.mode == "smoke" and args.s3_bucket:
+
+    if args.s3_bucket:
         s3 = boto3.client("s3", region_name=args.region)
-        try:
-            s3.head_object(Bucket=args.s3_bucket, Key="sei-logs/SMOKE_OK")
-            print("SMOKE_OK found in S3 — smoke passed.")
-        except Exception:
-            print(
-                "WARNING: SMOKE_OK not in S3 yet. Check s3://{}/sei-logs/ and console output.".format(
-                    args.s3_bucket
-                ),
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
+        markers = {
+            "smoke": "sei-logs/SMOKE_OK",
+            "full": "sei-logs/STAGE1_OK",
+            "stage1": "sei-logs/STAGE1_OK",
+            "stage2": "sei-logs/STAGE2_OK",
+        }
+        key = markers.get(args.mode)
+        if key:
+            try:
+                s3.head_object(Bucket=args.s3_bucket, Key=key)
+                print(f"{key} found in S3 — {args.mode} passed.")
+            except Exception:
+                print(
+                    f"WARNING: {key} not in S3 yet. Check s3://{args.s3_bucket}/sei-logs/ "
+                    "and console output.",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
 
 
 if __name__ == "__main__":

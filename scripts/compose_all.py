@@ -14,12 +14,20 @@ from sei.compose.synthetic import iter_seed_examples
 from sei.verify.validator import verify_example
 
 
-def load_guide_csv(path: Path, *, limit: int | None, stage: int) -> list[dict]:
+def load_guide_csv(
+    path: Path,
+    *,
+    limit: int | None,
+    stage: int,
+    offset: int = 0,
+) -> list[dict]:
     rows = []
     with path.open(newline="", encoding="utf-8", errors="replace") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(reader):
-            if limit is not None and i >= limit:
+            if i < offset:
+                continue
+            if limit is not None and len(rows) >= limit:
                 break
             rows.append(guide_row_to_example(row, stage=stage, idx=i))
     return rows
@@ -56,7 +64,18 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("data/processed/v1"))
     parser.add_argument("--guide", type=Path, default=None, help="Path to GUIDE CSV")
     parser.add_argument("--guide-limit", type=int, default=5000)
+    parser.add_argument(
+        "--guide-offset",
+        type=int,
+        default=0,
+        help="Skip first N GUIDE rows (e.g. 20000 to continue after an earlier run)",
+    )
     parser.add_argument("--guide-stage", type=int, default=1)
+    parser.add_argument(
+        "--seed-stages",
+        default="",
+        help="Comma list of synthetic curriculum stages (default: 1..guide-stage)",
+    )
     parser.add_argument("--val-ratio", type=float, default=0.2, help="Fraction of split_groups for val")
     parser.add_argument(
         "--val-monitor-size",
@@ -67,12 +86,27 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    examples = iter_seed_examples([1, 2, 3, 4])
+    if args.seed_stages.strip():
+        seed_stages = [int(x) for x in args.seed_stages.split(",") if x.strip()]
+    else:
+        seed_stages = list(range(1, max(1, int(args.guide_stage)) + 1))
+    examples = iter_seed_examples(seed_stages)
     if args.guide and args.guide.exists():
-        examples.extend(load_guide_csv(args.guide, limit=args.guide_limit, stage=args.guide_stage))
-        print(f"loaded GUIDE from {args.guide}")
+        examples.extend(
+            load_guide_csv(
+                args.guide,
+                limit=args.guide_limit,
+                stage=args.guide_stage,
+                offset=args.guide_offset,
+            )
+        )
+        print(
+            f"loaded GUIDE from {args.guide} "
+            f"(offset={args.guide_offset} limit={args.guide_limit} stage={args.guide_stage})"
+        )
     else:
         print("GUIDE CSV not provided — synthetic only")
+    print(f"synthetic seed stages={seed_stages}")
 
     kept = []
     dropped = 0
