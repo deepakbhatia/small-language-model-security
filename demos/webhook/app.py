@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
@@ -18,10 +19,28 @@ _engine: SEIInferencer | None = None
 def get_engine() -> SEIInferencer:
     global _engine
     if _engine is None:
-        model = os.environ.get("SEI_MODEL_PATH")
-        stub = os.environ.get("SEI_STUB", "1") == "1" or not model
+        from sei.infer.engine import DEFAULT_ADAPTER, DEFAULT_BASE
+
+        model = os.environ.get("SEI_MODEL_PATH", DEFAULT_BASE)
+        adapter = os.environ.get("SEI_ADAPTER_PATH", str(DEFAULT_ADAPTER))
+        # SEI_STUB=1 forces stub. Default: use adapter if present, else stub.
+        stub_env = os.environ.get("SEI_STUB")
+        if stub_env is None:
+            stub = not Path(adapter).exists() if adapter else True
+        else:
+            stub = stub_env == "1"
+        if os.environ.get("SEI_NO_ADAPTER", "0") == "1":
+            adapter = None
         backend = os.environ.get("SEI_BACKEND", "transformers")
-        _engine = SEIInferencer(model_path=model, backend=backend, stub=stub)
+        load_4bit = os.environ.get("SEI_LOAD_4BIT")
+        load_in_4bit = None if load_4bit is None else load_4bit == "1"
+        _engine = SEIInferencer(
+            model_path=model,
+            adapter_path=None if stub else adapter,
+            backend=backend,
+            stub=stub,
+            load_in_4bit=load_in_4bit,
+        )
     return _engine
 
 

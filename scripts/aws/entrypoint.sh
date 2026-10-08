@@ -53,9 +53,35 @@ cd repo
 git fetch --all || true
 git reset --hard origin/main || git reset --hard HEAD
 
-python3 -m venv .venv
-# shellcheck disable=SC1091
-source .venv/bin/activate
+# DLAMI (Ubuntu) often ships conda+torch; system python3 may lack ensurepip/venv.
+activate_python() {
+  if [[ -f /opt/conda/etc/profile.d/conda.sh ]]; then
+    # shellcheck disable=SC1091
+    source /opt/conda/etc/profile.d/conda.sh
+    for env in pytorch pytorch_p312 pytorch_p311 base; do
+      if conda env list 2>/dev/null | awk '{print $1}' | grep -qx "$env"; then
+        echo "[sei] conda activate $env"
+        conda activate "$env"
+        break
+      fi
+    done
+    if python -c "import torch" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  echo "[sei] conda/torch not ready — installing python3-venv and creating .venv"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  PY_VER="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  apt-get install -y "python${PY_VER}-venv" python3-pip || apt-get install -y python3-venv python3-pip
+  # Prefer system site-packages so a preinstalled torch (if any) is visible.
+  python3 -m venv --system-site-packages .venv
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+}
+
+activate_python
 pip install -U pip wheel
 pip install -e ".[train]"
 pip install awscli

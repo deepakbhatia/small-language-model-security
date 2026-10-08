@@ -25,6 +25,11 @@ python scripts/eval_harness.py --gold data/golden --pred data/golden
 
 # Local SIEM webhook demo (no GPU required for echo/stub mode)
 uvicorn demos.webhook.app:app --reload --port 8080
+
+# Run stage-1 adapter (after aws s3 sync → checkpoints/sei-sft-stage1/adapter)
+python scripts/infer_sei.py
+# Webhook with real weights:
+#   SEI_STUB=0 uvicorn demos.webhook.app:app --port 8080
 ```
 
 Training tutorial (read first): [`docs/training_mechanics.md`](docs/training_mechanics.md)

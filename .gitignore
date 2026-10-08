@@ -26,3 +26,6 @@ data/processed/**
 *.safetensors
 wandb/
 runs/
+
+eval/preds/
+aws_commands.md
