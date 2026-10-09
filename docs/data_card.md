@@ -9,9 +9,11 @@ Pinned: **16.1** (`data/attack/v16.1/`). Refresh IDs with `python scripts/downlo
 |--------|---------|------|--------|
 | Synthetic Atomic/Sigma-style scenarios | Apache-2.0 | Seed + CI full chains | `scripts/compose_synthetic.py` |
 | Microsoft GUIDE | CDLA-Permissive-2.0 | Disposition / severity / technique weak labels | `scripts/download_guide.py` + `compose_all.py --guide` |
+| Atomic Red Team | Apache-2.0 | Technique-labeled executor commands | `download_attack_corpora.py` + `compose_all.py --atomic-dir` |
+| SigmaHQ rules | DRL-1.1 | Weak technique labels from tagged rules | `download_attack_corpora.py` + `compose_all.py --sigma-dir` |
+| OTRF-style curated scenarios | Apache-2.0 | High-signal technique/evidence chains | `data/otrf/scenarios.yaml` |
 | MITRE ATT&CK STIX | MITRE terms + notice | Technique vocabulary + RAG cards | `download_attack.py` |
 | D3FEND action templates | MITRE terms + notice | Recommended action IDs | `data/d3fend/` |
-| Sigma / ESCU (optional future) | DRL-1.1 / Apache-2.0 | Weak labels at scale | TBD composers |
 
 ## Denied for commercial train
 SecEval (NC), VirusTotal public scrapes, Elastic License v2 rule text redistribution — see `configs/license_allowlist.yaml`.

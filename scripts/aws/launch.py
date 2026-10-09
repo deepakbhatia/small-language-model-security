@@ -18,6 +18,13 @@ Examples:
     --resume-adapter-s3 s3://bucket/sei-adapter/ \\
     --adapter-s3 s3://bucket/sei-adapter-stage2/ \\
     --guide-limit 50000 ...
+
+  # Atomic/Sigma/OTRF attack mix (resume stage-2 adapter)
+  python scripts/aws/launch.py --mode attack --wait \\
+    --resume-adapter-s3 s3://bucket/sei-adapter-stage2/ \\
+    --adapter-s3 s3://bucket/sei-adapter-attack/ \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv \\
+    --guide-limit 5000 ...
 """
 
 from __future__ import annotations
@@ -40,6 +47,9 @@ def build_user_data(args: argparse.Namespace, entrypoint: str) -> str:
         "SEI_GUIDE_LIMIT": str(args.guide_limit),
         "SEI_GUIDE_OFFSET": str(args.guide_offset),
         "SEI_GUIDE_STAGE": str(args.guide_stage),
+        "SEI_ATOMIC_LIMIT": str(args.atomic_limit),
+        "SEI_SIGMA_LIMIT": str(args.sigma_limit),
+        "SEI_CORPORA_S3": args.corpora_s3 or "",
         "SEI_SHARD_SIZE": str(args.shard_size),
         "SEI_KEEP_ALIVE": "1" if args.keep_alive else "0",
         "HF_TOKEN": args.hf_token or "",
@@ -62,9 +72,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="SEI AWS GPU launch (smoke|full|stage1|stage2)")
     parser.add_argument(
         "--mode",
-        choices=["smoke", "full", "stage1", "stage2"],
+        choices=["smoke", "full", "stage1", "stage2", "attack"],
         default="smoke",
-        help="full=legacy stage1; stage1=resume GUIDE continue; stage2=techniques from stage1 adapter",
+        help="full/stage1=GUIDE; stage2=GUIDE techniques; attack=Atomic+Sigma+OTRF mix",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
@@ -90,24 +100,37 @@ def main() -> None:
     parser.add_argument("--guide-limit", type=int, default=None, help="Max GUIDE rows after offset")
     parser.add_argument("--guide-offset", type=int, default=None, help="Skip first N GUIDE rows")
     parser.add_argument("--guide-stage", type=int, default=None, help="GUIDE curriculum stage (1 or 2)")
+    parser.add_argument("--atomic-limit", type=int, default=8000, help="Max Atomic examples (attack mode)")
+    parser.add_argument("--sigma-limit", type=int, default=8000, help="Max Sigma examples (attack mode)")
+    parser.add_argument(
+        "--corpora-s3",
+        default="",
+        help="Optional s3://…/corpora/ with pre-downloaded atomic+sigma under data/raw layout",
+    )
     parser.add_argument("--shard-size", type=int, default=2000)
     parser.add_argument("--hf-token", default="", help="Optional HF token")
-    parser.add_argument("--volume-gb", type=int, default=150)
+    parser.add_argument("--volume-gb", type=int, default=200)
     args = parser.parse_args()
 
     # Mode-specific defaults: stage1 continues +50k GUIDE from row 20k;
     # stage2 trains techniques on up to 50k rows from the start at stage=2.
+    # attack: optional small GUIDE mix; Atomic/Sigma downloaded on box.
     if args.guide_limit is None:
-        args.guide_limit = 50000 if args.mode in {"stage1", "stage2"} else 20000
+        if args.mode == "attack":
+            args.guide_limit = 5000
+        elif args.mode in {"stage1", "stage2"}:
+            args.guide_limit = 50000
+        else:
+            args.guide_limit = 20000
     if args.guide_offset is None:
         args.guide_offset = 20000 if args.mode == "stage1" else 0
     if args.guide_stage is None:
-        args.guide_stage = 2 if args.mode == "stage2" else 1
+        args.guide_stage = 2 if args.mode in {"stage2", "attack"} else 1
 
     if args.mode in {"full", "stage1", "stage2"} and not args.guide_s3 and not args.dry_run:
         parser.error("--guide-s3 is required for --mode full|stage1|stage2")
-    if args.mode == "stage2" and not args.resume_adapter_s3 and not args.dry_run:
-        parser.error("--resume-adapter-s3 (stage-1 adapter) is required for --mode stage2")
+    if args.mode in {"stage2", "attack"} and not args.resume_adapter_s3 and not args.dry_run:
+        parser.error("--resume-adapter-s3 is required for --mode stage2|attack")
     if args.mode == "stage1" and not args.resume_adapter_s3 and not args.dry_run:
         print(
             "WARNING: --resume-adapter-s3 unset; stage1 will train a fresh adapter "
@@ -235,6 +258,7 @@ def main() -> None:
             "full": "sei-logs/STAGE1_OK",
             "stage1": "sei-logs/STAGE1_OK",
             "stage2": "sei-logs/STAGE2_OK",
+            "attack": "sei-logs/ATTACK_OK",
         }
         key = markers.get(args.mode)
         if key:

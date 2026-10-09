@@ -113,6 +113,36 @@ python scripts/aws/launch.py --mode stage2 --wait \
 Success marker: `s3://…/sei-logs/STAGE2_OK`. Pull with:
 `aws s3 sync s3://my-sei-bucket/sei-adapter-stage2/ checkpoints/sei-sft-stage2/adapter/`
 
+## Attack mix (Atomic + Sigma + OTRF) — technique supervision
+
+Downloads Atomic Red Team + SigmaHQ on the instance (or sync `--corpora-s3`), composes with curated OTRF scenarios, optional small GUIDE mix, resumes from stage‑2 adapter.
+
+```bash
+python scripts/aws/launch.py --mode attack --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter-stage2/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter-attack/ \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --guide-limit 5000 \
+  --atomic-limit 8000 \
+  --sigma-limit 8000
+```
+
+Success marker: `sei-logs/ATTACK_OK`. Local compose smoke:
+
+```bash
+python scripts/download_attack_corpora.py
+python scripts/compose_all.py --out data/processed/attack --attack-mix \
+  --otrf data/otrf/scenarios.yaml --seed-stages 2,3,4 --attack-stages 2,3,4 \
+  --atomic-limit 500 --sigma-limit 500
+```
+
 **Push `main` before launching** — the instance clones the repo for `compose_all` / `train_shards` (user-data only embeds `entrypoint.sh`).
 
 ## Local smoke (no AWS)

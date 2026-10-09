@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2
+#   SEI_MODE=smoke|full|stage1|stage2|attack
 #   SEI_REPO_URL=...
 #   SEI_S3_BUCKET=...          # required for artifact sync
 #   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv
 #   SEI_ADAPTER_S3=s3://bucket/sei-adapter/          # write target
 #   SEI_RESUME_ADAPTER_S3=s3://bucket/sei-adapter/   # warm-start (optional)
 #   SEI_MODEL_S3=s3://bucket/models/Foundation-Sec-8B/  # optional cache
+#   SEI_CORPORA_S3=s3://bucket/corpora/              # optional pre-downloaded atomic/sigma
 #   SEI_GUIDE_LIMIT=50000
 #   SEI_GUIDE_OFFSET=20000     # stage1 continue: skip already-trained rows
 #   SEI_GUIDE_STAGE=1|2
+#   SEI_ATOMIC_LIMIT=8000
+#   SEI_SIGMA_LIMIT=8000
 #   SEI_SHARD_SIZE=2000
 #   SEI_KEEP_ALIVE=0|1
 #   HF_TOKEN=...
@@ -28,9 +31,12 @@ ADAPTER_S3="${SEI_ADAPTER_S3:-}"
 RESUME_ADAPTER_S3="${SEI_RESUME_ADAPTER_S3:-}"
 GUIDE_S3="${SEI_GUIDE_S3:-}"
 MODEL_S3="${SEI_MODEL_S3:-}"
+CORPORA_S3="${SEI_CORPORA_S3:-}"
 GUIDE_LIMIT="${SEI_GUIDE_LIMIT:-20000}"
 GUIDE_OFFSET="${SEI_GUIDE_OFFSET:-0}"
 GUIDE_STAGE="${SEI_GUIDE_STAGE:-1}"
+ATOMIC_LIMIT="${SEI_ATOMIC_LIMIT:-8000}"
+SIGMA_LIMIT="${SEI_SIGMA_LIMIT:-8000}"
 SHARD_SIZE="${SEI_SHARD_SIZE:-2000}"
 
 cleanup() {
@@ -215,10 +221,7 @@ elif [[ "$MODE" == "stage2" ]]; then
   echo "[sei] STAGE2 training from stage-1 adapter (GUIDE stage=2 + synthetic 1,2)"
   require_guide
   STAGE1_ADAPTER="checkpoints/sei-sft-stage1/adapter"
-  STAGE2_ADAPTER="checkpoints/sei-sft-stage2/adapter"
-  # Prefer explicit resume; else fall back to write target's sibling stage1 prefix
   if [[ -z "$RESUME_ADAPTER_S3" && -n "$ADAPTER_S3" ]]; then
-    # common layout: sei-adapter-stage2 ← write; sei-adapter ← stage1
     echo "[sei] SEI_RESUME_ADAPTER_S3 unset — set it to stage-1 adapter prefix"
   fi
   pull_resume_adapter "$STAGE1_ADAPTER"
@@ -249,8 +252,73 @@ elif [[ "$MODE" == "stage2" ]]; then
     echo "STAGE2_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/STAGE2_OK"
   fi
 
+elif [[ "$MODE" == "attack" ]]; then
+  echo "[sei] ATTACK mix training (Atomic + Sigma + OTRF), resume from prior adapter"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: attack mode requires SEI_RESUME_ADAPTER_S3 (stage2 adapter recommended)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-resume/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  if [[ -n "$CORPORA_S3" ]]; then
+    echo "[sei] syncing corpora from $CORPORA_S3"
+    mkdir -p data/raw
+    aws s3 sync "$CORPORA_S3" data/raw/
+  fi
+  if [[ ! -d data/raw/atomic/atomics ]] || [[ ! -d data/raw/sigma/rules ]]; then
+    echo "[sei] downloading Atomic + Sigma corpora"
+    python scripts/download_attack_corpora.py --out-root data/raw
+  fi
+
+  GUIDE_ARGS=()
+  if [[ -n "$GUIDE_S3" ]]; then
+    aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+    # small GUIDE stage-2 mix so disposition doesn't collapse; techniques come from attack corpora
+    GUIDE_ARGS=(--guide /tmp/GUIDE_Train.csv --guide-limit "${GUIDE_LIMIT:-5000}" --guide-offset 0 --guide-stage 2)
+  fi
+
+  mkdir -p data/processed/attack
+  python scripts/compose_all.py \
+    --out data/processed/attack \
+    --attack-mix \
+    --otrf data/otrf/scenarios.yaml \
+    --atomic-limit "$ATOMIC_LIMIT" \
+    --sigma-limit "$SIGMA_LIMIT" \
+    --seed-stages 2,3,4 \
+    --attack-stages 2,3,4 \
+    --val-ratio 0.15 \
+    --val-monitor-size 200 \
+    "${GUIDE_ARGS[@]}"
+  python scripts/shard_jsonl.py \
+    --input data/processed/attack/train.jsonl \
+    --out-dir data/processed/attack/shards \
+    --shard-size "$SHARD_SIZE"
+
+  ADAPTER_ARG=()
+  if [[ -n "$ADAPTER_S3" ]]; then
+    ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
+  fi
+  python scripts/aws/train_shards.py \
+    --base-config configs/sft_attack.yaml \
+    --run-config configs/sft_attack_aws.yaml \
+    --output-dir checkpoints/sei-sft-attack \
+    --shards-dir data/processed/attack/shards \
+    --val-file data/processed/attack/val.jsonl \
+    --resume-adapter "$RESUME_DEST" \
+    --max-length 1024 \
+    --batch-size 2 \
+    --grad-accum 8 \
+    --epochs 1 \
+    --eval-steps 500 \
+    --lr 5.0e-5 \
+    "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "ATTACK_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ATTACK_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack)" >&2
   exit 2
 fi
 

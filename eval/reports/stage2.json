@@ -1,0 +1,52 @@
+{
+  "n": 8,
+  "disposition": {
+    "macro_f1": 0.17857142857142858,
+    "per_class": {
+      "benign_true_positive": {
+        "precision": 0.14285714285714285,
+        "recall": 1.0,
+        "f1": 0.25
+      },
+      "needs_more_data": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "true_positive": {
+        "precision": 1.0,
+        "recall": 0.16666666666666666,
+        "f1": 0.2857142857142857
+      }
+    },
+    "support": {
+      "true_positive": 6,
+      "benign_true_positive": 1,
+      "needs_more_data": 1
+    }
+  },
+  "techniques": {
+    "exact_id_precision": 0.0,
+    "exact_id_recall": 0.0,
+    "exact_id_f1": 0.0,
+    "parent_tactic_accuracy": 0.0
+  },
+  "severity": {
+    "accuracy": 0.125,
+    "ordinal_mae": 1.25
+  },
+  "evidence": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+  },
+  "actions": {
+    "valid_type_rate": 1.0,
+    "valid_d3fend_rate": 1.0,
+    "overlong_action_rate": 0.0
+  },
+  "n_files": 8,
+  "adapter": "checkpoints/sei-sft-stage2/adapter",
+  "json_valid_rate": 1.0,
+  "verifier_clean_rate": 1.0
+}
