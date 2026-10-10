@@ -116,17 +116,32 @@ def atomic_test_to_example(
     )
 
 
+def _technique_sort_key(tid: str) -> tuple[int, int]:
+    tid = str(tid).upper()
+    m = __import__("re").match(r"T(\d{4})(?:\.(\d{3}))?", tid)
+    if not m:
+        return (9999, 0)
+    return (int(m.group(1)), int(m.group(2) or 0))
+
+
 def load_atomic_dir(
     atomics_dir: Path,
     *,
     stages: list[int],
     limit: int | None = None,
+    min_technique: str | None = None,
+    max_technique: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Load all atomics/**/*.yaml under an Atomic Red Team atomics/ folder."""
+    """Load all atomics/**/*.yaml under an Atomic Red Team atomics/ folder.
+
+    min_technique / max_technique (e.g. T1200) filter by ATT&CK id for blind splits.
+    """
     root = Path(atomics_dir)
     if not root.exists():
         return []
     files = sorted(root.glob("T*/T*.yaml")) + sorted(root.glob("t*/t*.yaml"))
+    min_key = _technique_sort_key(min_technique) if min_technique else None
+    max_key = _technique_sort_key(max_technique) if max_technique else None
     # de-dupe case variants
     seen_paths: set[Path] = set()
     examples: list[dict[str, Any]] = []
@@ -142,6 +157,11 @@ def load_atomic_dir(
         if not isinstance(doc, dict):
             continue
         tid = doc.get("attack_technique") or path.parent.name.upper()
+        key = _technique_sort_key(str(tid))
+        if min_key is not None and key < min_key:
+            continue
+        if max_key is not None and key > max_key:
+            continue
         display = str(doc.get("display_name") or tid)
         for i, test in enumerate(doc.get("atomic_tests") or []):
             if not isinstance(test, dict):

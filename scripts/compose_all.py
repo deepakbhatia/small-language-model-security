@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sei.compose.atomic import load_atomic_dir
 from sei.compose.guide import guide_row_to_example
+from sei.compose.ood import load_ood_train_scenarios
 from sei.compose.otrf import load_otrf_jsonl, load_otrf_scenarios
 from sei.compose.sigma import load_sigma_dir
 from sei.compose.synthetic import iter_seed_examples
@@ -88,6 +89,16 @@ def main() -> None:
     )
     parser.add_argument("--atomic-limit", type=int, default=None)
     parser.add_argument(
+        "--atomic-min-technique",
+        default="",
+        help="Only Atomic techniques >= this id (e.g. T1200 for blind eval)",
+    )
+    parser.add_argument(
+        "--atomic-max-technique",
+        default="",
+        help="Only Atomic techniques <= this id",
+    )
+    parser.add_argument(
         "--sigma-dir",
         type=Path,
         default=None,
@@ -112,10 +123,37 @@ def main() -> None:
         action="store_true",
         help="Enable default Atomic+Sigma+OTRF paths if present under data/raw and data/otrf",
     )
+    parser.add_argument(
+        "--ood",
+        type=Path,
+        default=None,
+        help="Train-safe OOD scenarios YAML (data/ood/train_scenarios.yaml). Never held_out.",
+    )
+    parser.add_argument("--ood-limit", type=int, default=None)
+    parser.add_argument("--ood-variants", type=int, default=3, help="Host/user variants per OOD scenario")
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--val-monitor-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+
+    from sei.blind_guard import is_held_out_path
+
+    # Never mix sealed held-out inputs into a trainable processed/ output.
+    sealed_in = (
+        is_held_out_path(args.otrf)
+        or is_held_out_path(args.otrf_jsonl)
+        or is_held_out_path(args.ood)
+    )
+    if sealed_in and not is_held_out_path(args.out):
+        raise SystemExit(
+            "Refusing to compose sealed data/blind/held_out into a non-held_out --out. "
+            "Use scripts/freeze_held_out_eval.py for the sealed eval artifact."
+        )
+    if is_held_out_path(args.out):
+        raise SystemExit(
+            "Refusing compose_all --out under data/blind/held_out/. "
+            "Freeze sealed eval with scripts/freeze_held_out_eval.py only."
+        )
 
     attack_stages = _stages(args.attack_stages, [2, 3, 4])
     if args.no_seed:
@@ -148,9 +186,18 @@ def main() -> None:
         sigma_dir = sigma_dir or Path("data/raw/sigma/rules")
 
     if atomic_dir and Path(atomic_dir).exists():
-        a = load_atomic_dir(Path(atomic_dir), stages=attack_stages, limit=args.atomic_limit)
+        a = load_atomic_dir(
+            Path(atomic_dir),
+            stages=attack_stages,
+            limit=args.atomic_limit,
+            min_technique=args.atomic_min_technique or None,
+            max_technique=args.atomic_max_technique or None,
+        )
         examples.extend(a)
-        print(f"loaded Atomic n={len(a)} from {atomic_dir} stages={attack_stages}")
+        print(
+            f"loaded Atomic n={len(a)} from {atomic_dir} stages={attack_stages} "
+            f"min={args.atomic_min_technique or '-'} max={args.atomic_max_technique or '-'}"
+        )
     elif atomic_dir:
         print(f"Atomic dir missing: {atomic_dir}")
 
@@ -170,6 +217,19 @@ def main() -> None:
         oj = load_otrf_jsonl(args.otrf_jsonl, stages=attack_stages, limit=args.otrf_limit)
         examples.extend(oj)
         print(f"loaded OTRF jsonl n={len(oj)} from {args.otrf_jsonl}")
+
+    ood_path = args.ood
+    if ood_path and Path(ood_path).exists():
+        ood_rows = load_ood_train_scenarios(
+            Path(ood_path),
+            stages=attack_stages,
+            limit=args.ood_limit,
+            variants_per=args.ood_variants,
+        )
+        examples.extend(ood_rows)
+        print(f"loaded OOD-train n={len(ood_rows)} from {ood_path} variants={args.ood_variants}")
+    elif ood_path:
+        print(f"OOD path missing: {ood_path}")
 
     kept = []
     dropped = 0

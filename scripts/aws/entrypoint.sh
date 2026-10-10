@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2|attack
+#   SEI_MODE=smoke|full|stage1|stage2|attack|ood
 #   SEI_REPO_URL=...
 #   SEI_S3_BUCKET=...          # required for artifact sync
 #   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv
@@ -317,8 +317,82 @@ elif [[ "$MODE" == "attack" ]]; then
     echo "ATTACK_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ATTACK_OK"
   fi
 
+elif [[ "$MODE" == "ood" ]]; then
+  echo "[sei] OOD training (SaaS/cloud/IdP + BTP/FP/needs_more_data + evidence), resume attack adapter"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: ood mode requires SEI_RESUME_ADAPTER_S3 (sei-adapter-attack recommended)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-resume/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  # Never touch sealed held_out
+  if [[ -d data/blind/held_out ]]; then
+    echo "[sei] sealed held_out present — will not use for training"
+  fi
+
+  if [[ -n "$CORPORA_S3" ]]; then
+    mkdir -p data/raw
+    aws s3 sync "$CORPORA_S3" data/raw/ || true
+  fi
+  if [[ ! -d data/raw/atomic/atomics ]]; then
+    python scripts/download_attack_corpora.py --out-root data/raw --skip-sigma || true
+  fi
+
+  GUIDE_ARGS=()
+  if [[ -n "$GUIDE_S3" ]]; then
+    aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+    # small GUIDE stage-4 slice for disposition diversity (not held-out offsets)
+    GUIDE_ARGS=(
+      --guide /tmp/GUIDE_Train.csv
+      --guide-limit "${GUIDE_LIMIT:-3000}"
+      --guide-offset "${GUIDE_OFFSET:-100000}"
+      --guide-stage 4
+    )
+  fi
+
+  mkdir -p data/processed/ood
+  python scripts/compose_all.py \
+    --out data/processed/ood \
+    --no-seed \
+    --ood data/ood/train_scenarios.yaml \
+    --ood-variants 4 \
+    --otrf data/otrf/scenarios.yaml \
+    --atomic-dir data/raw/atomic/atomics \
+    --atomic-limit "${ATOMIC_LIMIT:-2000}" \
+    --attack-stages 3,4 \
+    --val-ratio 0.15 \
+    --val-monitor-size 200 \
+    "${GUIDE_ARGS[@]}"
+  python scripts/shard_jsonl.py \
+    --input data/processed/ood/train.jsonl \
+    --out-dir data/processed/ood/shards \
+    --shard-size "$SHARD_SIZE"
+
+  ADAPTER_ARG=()
+  if [[ -n "$ADAPTER_S3" ]]; then
+    ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
+  fi
+  python scripts/aws/train_shards.py \
+    --base-config configs/sft_ood.yaml \
+    --run-config configs/sft_ood_aws.yaml \
+    --output-dir checkpoints/sei-sft-ood \
+    --shards-dir data/processed/ood/shards \
+    --val-file data/processed/ood/val.jsonl \
+    --resume-adapter "$RESUME_DEST" \
+    --max-length 1024 \
+    --batch-size 2 \
+    --grad-accum 8 \
+    --epochs 1 \
+    --eval-steps 200 \
+    --lr 3.0e-5 \
+    "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "OOD_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/OOD_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood)" >&2
   exit 2
 fi
 

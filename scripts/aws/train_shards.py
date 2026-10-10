@@ -42,9 +42,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    from sei.blind_guard import assert_not_held_out_path
+
+    assert_not_held_out_path(args.shards_dir, role="shards-dir")
+    assert_not_held_out_path(args.val_file, role="val-file")
+    assert_not_held_out_path(args.base_config, role="base-config")
+
     shards = sorted(args.shards_dir.glob("train_shard*.jsonl"))
     if not shards:
         raise SystemExit(f"No shards in {args.shards_dir}")
+    for shard in shards:
+        assert_not_held_out_path(shard, role="train shard")
     if args.max_shards is not None:
         shards = shards[: args.max_shards]
     shards = shards[args.start_shard :]

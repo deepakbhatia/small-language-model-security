@@ -17,6 +17,10 @@ data/processed/**
 !data/processed/.gitkeep
 !data/processed/seed/
 !data/processed/seed/**
+# Sealed blind eval (never train) — keep in git
+!data/blind/
+!data/blind/**
+data/processed/blind/
 # Prefer composing on Kaggle from GUIDE input; keep only small seed in git
 *.gguf
 .DS_Store

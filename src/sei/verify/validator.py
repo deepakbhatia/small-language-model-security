@@ -58,11 +58,17 @@ def verify_example(
     attack_ids = load_id_set(attack_path)
     d3fend_ids = load_id_set(d3fend_path)
 
-    incident = obj.get("incident") or {}
+    incident = obj.get("incident")
+    if not isinstance(incident, dict):
+        errors.append(f"bad_incident_type: {type(incident).__name__}")
+        incident = {}
     if incident.get("disposition") not in DISPOSITIONS:
         errors.append(f"bad_disposition: {incident.get('disposition')}")
 
-    severity = obj.get("severity") or {}
+    severity = obj.get("severity")
+    if not isinstance(severity, dict):
+        errors.append(f"bad_severity_type: {type(severity).__name__}")
+        severity = {}
     if severity.get("level") not in SEVERITY_LEVELS:
         errors.append(f"bad_severity_level: {severity.get('level')}")
     score = severity.get("score")
@@ -73,14 +79,32 @@ def verify_example(
     if not isinstance(conf, (int, float)) or not (0 <= float(conf) <= 1):
         errors.append(f"bad_confidence: {conf}")
 
-    for t in obj.get("techniques") or []:
+    techniques = obj.get("techniques")
+    if techniques is None:
+        techniques = []
+    if not isinstance(techniques, list):
+        errors.append(f"bad_techniques_type: {type(techniques).__name__}")
+        techniques = []
+    for t in techniques:
+        if not isinstance(t, dict):
+            errors.append(f"bad_technique_type: {type(t).__name__}")
+            continue
         tid = t.get("id", "")
         if not T_RE.match(str(tid)):
             errors.append(f"bad_technique_id_format: {tid}")
         elif require_attack_membership and attack_ids and tid not in attack_ids:
             errors.append(f"bad_technique_id: {tid}")
 
-    for ev in obj.get("evidence") or []:
+    evidence = obj.get("evidence")
+    if evidence is None:
+        evidence = []
+    if not isinstance(evidence, list):
+        errors.append(f"bad_evidence_type: {type(evidence).__name__}")
+        evidence = []
+    for ev in evidence:
+        if not isinstance(ev, dict):
+            errors.append(f"bad_evidence_item_type: {type(ev).__name__}")
+            continue
         val = ev.get("value", "")
         if not val:
             continue
@@ -89,10 +113,18 @@ def verify_example(
         if val not in telemetry_text and escaped not in telemetry_text:
             errors.append(f"ungrounded_evidence: {val!r}")
 
-    actions = obj.get("recommended_actions") or []
+    actions = obj.get("recommended_actions")
+    if actions is None:
+        actions = []
+    if not isinstance(actions, list):
+        errors.append(f"bad_actions_type: {type(actions).__name__}")
+        actions = []
     if len(actions) > 5:
         errors.append("too_many_actions")
     for act in actions:
+        if not isinstance(act, dict):
+            errors.append(f"bad_action_item_type: {type(act).__name__}")
+            continue
         if act.get("type") not in ACTION_TYPES:
             errors.append(f"bad_action_type: {act.get('type')}")
         d3 = act.get("d3fend_id")

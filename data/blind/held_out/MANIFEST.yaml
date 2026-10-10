@@ -1,0 +1,18 @@
+# SEALED BLIND EVAL — NEVER TRAIN
+#
+# Contract:
+#   - Everything under data/blind/held_out/ is permanently held out.
+#   - Training code MUST refuse these paths and meta.blind_held_out=true rows.
+#   - Do not copy these scenarios into data/otrf/, synthetic SCENARIOS, or GUIDE mixes.
+#   - eval.jsonl is the frozen artifact; regenerate only via scripts/freeze_held_out_eval.py
+#
+name: sei-blind-held-out-v1
+policy: never_train
+split: held_out_never_train
+meta_flag: blind_held_out
+scenarios: scenarios.yaml
+frozen_eval: eval.jsonl
+attack_version: "16.1"
+notes: >
+  Hand-authored only (no Atomic/Sigma/GUIDE rows). Designed for out-of-distribution
+  SOC products: IdP, cloud audit, email, K8s, SaaS, and mixed dispositions.

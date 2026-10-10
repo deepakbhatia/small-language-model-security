@@ -29,13 +29,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dry-run", action="store_true", help="Validate data only; skip GPU train")
     args = parser.parse_args(argv)
 
+    from sei.blind_guard import assert_dataset_not_held_out, assert_not_held_out_path
+
     cfg = yaml.safe_load(args.config.read_text())
     stage = args.stage or int(cfg.get("stage", 4))
     train_path = Path(cfg["train_file"])
     val_path = Path(cfg.get("val_file") or cfg["train_file"])
+    assert_not_held_out_path(train_path, role="train_file")
+    assert_not_held_out_path(val_path, role="val_file")
 
     train_rows = filter_stage(load_jsonl(train_path), stage)
     val_rows = filter_stage(load_jsonl(val_path), stage)
+    assert_dataset_not_held_out(train_rows, role="train_file")
+    assert_dataset_not_held_out(val_rows, role="val_file")
     print(f"[sft] stage={stage} train={len(train_rows)} val={len(val_rows)}")
 
     if args.dry_run or cfg.get("dry_run"):
