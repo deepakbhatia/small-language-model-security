@@ -225,7 +225,7 @@ python scripts/compose_all.py --out data/processed/disposition --no-seed \
   --otrf - --attack-stages 4 --max-tp-frac 0.40 --val-ratio 0.15
 ```
 
-**Push `main` before launching** — the instance clones the repo for `compose_all` / `train_shards` (user-data only embeds `entrypoint.sh`).
+**Push `main` before launching** — user-data is a thin bootstrap (EC2 16KiB limit); the instance clones the repo and runs `scripts/aws/entrypoint.sh` from `origin/main`.
 
 ## Sealed blind eval (never train)
 

@@ -55,7 +55,12 @@ import time
 from pathlib import Path
 
 
-def build_user_data(args: argparse.Namespace, entrypoint: str) -> str:
+def build_user_data(args: argparse.Namespace) -> str:
+    """Thin bootstrap only — EC2 user-data hard-caps at 16KiB.
+
+    Entrypoint lives in the git repo (scripts/aws/entrypoint.sh) and is executed
+    after clone/reset to origin/main. Do not embed the full entrypoint here.
+    """
     exports = {
         "SEI_MODE": args.mode,
         "SEI_REPO_URL": args.repo_url,
@@ -81,13 +86,20 @@ def build_user_data(args: argparse.Namespace, entrypoint: str) -> str:
     return f"""#!/bin/bash
 set -euo pipefail
 {export_lines}
-cat >/tmp/sei-entrypoint.sh <<'SEI_EOF'
-{entrypoint}
-SEI_EOF
-chmod +x /tmp/sei-entrypoint.sh
 # Give network/IAM a moment on fresh instances
 sleep 5
-/tmp/sei-entrypoint.sh
+WORK=/opt/sei
+REPO_URL="${{SEI_REPO_URL}}"
+mkdir -p "$WORK"
+cd "$WORK"
+if [[ ! -d repo/.git ]]; then
+  git clone "$REPO_URL" repo
+fi
+cd repo
+git fetch --all || true
+git reset --hard origin/main || git reset --hard HEAD
+chmod +x scripts/aws/entrypoint.sh
+exec scripts/aws/entrypoint.sh
 """
 
 
@@ -213,9 +225,13 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    entrypoint_path = Path(__file__).resolve().parent / "entrypoint.sh"
-    entrypoint = entrypoint_path.read_text()
-    user_data = build_user_data(args, entrypoint)
+    user_data = build_user_data(args)
+    ud_bytes = len(user_data.encode("utf-8"))
+    if ud_bytes > 16384:
+        raise SystemExit(
+            f"user-data is {ud_bytes} bytes (EC2 limit 16384). "
+            "Bootstrap must stay thin; entrypoint is loaded from git."
+        )
 
     print("=== plan ===")
     print(f"mode={args.mode} instance={args.instance_type} region={args.region} spot={args.spot}")
@@ -229,10 +245,10 @@ def main() -> None:
     print(f"resume_adapter_s3={args.resume_adapter_s3 or '-'}")
     print(f"adapter_s3={args.adapter_s3 or '-'}")
     print(f"keep_alive={args.keep_alive}")
+    print(f"user_data_bytes={ud_bytes}/16384")
     if args.dry_run:
-        print("\n=== user-data (first 40 lines) ===")
-        print("\n".join(user_data.splitlines()[:40]))
-        print("... [truncated] ...")
+        print("\n=== user-data ===")
+        print(user_data)
         print("\nDry-run only — no instance launched.")
         return
 
