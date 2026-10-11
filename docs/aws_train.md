@@ -172,6 +172,34 @@ python scripts/compose_all.py --out data/processed/ood --no-seed \
   --otrf data/otrf/scenarios.yaml --attack-stages 3,4 --val-ratio 0.15
 ```
 
+## Disposition train (hard negatives — BTP / FP / needs_more_data)
+
+Resumes from the **ood** adapter. Uses `data/disposition/train_scenarios.yaml` (never held_out), optional GUIDE stage‑4 slice, and `--max-tp-frac 0.35` so true_positive cannot dominate.
+
+```bash
+python scripts/aws/launch.py --mode disposition --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter-ood/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter-disposition/ \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --guide-limit 15000 \
+  --guide-offset 120000
+```
+
+Success marker: `sei-logs/DISPOSITION_OK`. Local compose smoke:
+
+```bash
+python scripts/compose_all.py --out data/processed/disposition --no-seed \
+  --ood data/disposition/train_scenarios.yaml --ood-variants 6 \
+  --otrf - --attack-stages 4 --max-tp-frac 0.35 --val-ratio 0.15
+```
+
 **Push `main` before launching** — the instance clones the repo for `compose_all` / `train_shards` (user-data only embeds `entrypoint.sh`).
 
 ## Sealed blind eval (never train)
@@ -182,7 +210,7 @@ Training code refuses these paths / `meta.blind_held_out=true`.
 ```bash
 python scripts/freeze_held_out_eval.py   # regenerate frozen JSONL only
 python scripts/eval_model.py \
-  --adapter checkpoints/sei-sft-ood/adapter \
+  --adapter checkpoints/sei-sft-disposition/adapter \
   --gold data/blind/held_out/eval.jsonl \
   --pred-dir eval/preds/held-out \
   --out eval/reports/held-out.json

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2|attack|ood
+#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition
 #   SEI_REPO_URL=...
 #   SEI_S3_BUCKET=...          # required for artifact sync
 #   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv
@@ -391,8 +391,72 @@ elif [[ "$MODE" == "ood" ]]; then
     echo "OOD_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/OOD_OK"
   fi
 
+elif [[ "$MODE" == "disposition" ]]; then
+  echo "[sei] DISPOSITION training (hard negatives BTP/FP/NMD), resume OOD adapter"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: disposition mode requires SEI_RESUME_ADAPTER_S3 (sei-adapter-ood recommended)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-resume/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  if [[ -d data/blind/held_out ]]; then
+    echo "[sei] sealed held_out present — will not use for training"
+  fi
+
+  GUIDE_ARGS=()
+  if [[ -n "$GUIDE_S3" ]]; then
+    aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+    # Broader GUIDE slice for IncidentGrade diversity (FP/BTP), then cap TP
+    GUIDE_ARGS=(
+      --guide /tmp/GUIDE_Train.csv
+      --guide-limit "${GUIDE_LIMIT:-15000}"
+      --guide-offset "${GUIDE_OFFSET:-120000}"
+      --guide-stage 4
+    )
+  fi
+
+  mkdir -p data/processed/disposition
+  python scripts/compose_all.py \
+    --out data/processed/disposition \
+    --no-seed \
+    --ood data/disposition/train_scenarios.yaml \
+    --ood-variants 6 \
+    --otrf - \
+    --attack-stages 4 \
+    --max-tp-frac 0.35 \
+    --val-ratio 0.15 \
+    --val-monitor-size 200 \
+    "${GUIDE_ARGS[@]}"
+  python scripts/shard_jsonl.py \
+    --input data/processed/disposition/train.jsonl \
+    --out-dir data/processed/disposition/shards \
+    --shard-size "$SHARD_SIZE"
+
+  ADAPTER_ARG=()
+  if [[ -n "$ADAPTER_S3" ]]; then
+    ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
+  fi
+  python scripts/aws/train_shards.py \
+    --base-config configs/sft_disposition.yaml \
+    --run-config configs/sft_disposition_aws.yaml \
+    --output-dir checkpoints/sei-sft-disposition \
+    --shards-dir data/processed/disposition/shards \
+    --val-file data/processed/disposition/val.jsonl \
+    --resume-adapter "$RESUME_DEST" \
+    --max-length 1024 \
+    --batch-size 2 \
+    --grad-accum 8 \
+    --epochs 1 \
+    --eval-steps 100 \
+    --lr 2.0e-5 \
+    "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "DISPOSITION_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/DISPOSITION_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition)" >&2
   exit 2
 fi
 

@@ -1,0 +1,844 @@
+# TRAIN-SAFE disposition curriculum — hard negatives / lookalikes.
+# NOT sealed held_out. Different IDs/hosts from data/blind/held_out and data/ood.
+# Goal: stop collapse to always true_positive (BTP / FP / needs_more_data).
+
+# ========== benign_true_positive (authorized / expected activity) ==========
+- id: disp-btp-sccm-package
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.3}
+  disposition: benign_true_positive
+  category: command_and_control
+  severity: [low, 20]
+  event:
+    timestamp: "2024-12-01T03:00:00Z"
+    source: sysmon
+    host: sccm-disp-01
+    user: SYSTEM
+    raw:
+      Image: "C:\\Windows\\CCM\\CcmExec.exe"
+      CommandLine: "CcmExec.exe /Package SWDIST-Chrome-120 CHG-55210"
+      message: "SCCM CcmExec package SWDIST-Chrome-120 covered by CHG-55210"
+    message: "SCCM CcmExec package SWDIST-Chrome-120 covered by CHG-55210"
+  evidence_field: raw.message
+  evidence_value: "covered by CHG-55210"
+  evidence_why: "Software distribution with change ticket — expected."
+  summary: "SCCM package push with CHG — benign true positive."
+
+- id: disp-btp-puppet-agent
+  technique: {id: T1059.004, name: Unix Shell, tactic: Execution, confidence: 0.28}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 16]
+  event:
+    timestamp: "2024-12-01T04:10:00Z"
+    source: other
+    host: cfg-disp-puppet
+    user: root
+    raw:
+      ParentImage: "/opt/puppetlabs/puppet/bin/puppet"
+      CommandLine: "bash /etc/puppetlabs/code/environments/prod/modules/base/files/harden.sh"
+      message: "puppet agent applied harden.sh on cfg-disp-puppet"
+    message: "puppet agent applied harden.sh on cfg-disp-puppet"
+  evidence_field: raw.ParentImage
+  evidence_value: "/opt/puppetlabs/puppet/bin/puppet"
+  evidence_why: "Config-management parent — expected automation."
+  summary: "Puppet harden script — benign true positive."
+
+- id: disp-btp-chef-client
+  technique: {id: T1059.004, name: Unix Shell, tactic: Execution, confidence: 0.28}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 17]
+  event:
+    timestamp: "2024-12-01T04:30:00Z"
+    source: other
+    host: cfg-disp-chef
+    user: root
+    raw:
+      ParentImage: "/opt/chef/bin/chef-client"
+      CommandLine: "ruby /var/chef/cache/cookbooks/os_patch/recipes/default.rb"
+      message: "chef-client ran os_patch cookbook on cfg-disp-chef"
+    message: "chef-client ran os_patch cookbook on cfg-disp-chef"
+  evidence_field: raw.ParentImage
+  evidence_value: "/opt/chef/bin/chef-client"
+  evidence_why: "Chef client recipe run — expected."
+  summary: "Chef os_patch cookbook — benign true positive."
+
+- id: disp-btp-nessus-scan
+  technique: {id: T1046, name: Network Service Discovery, tactic: Discovery, confidence: 0.3}
+  disposition: benign_true_positive
+  category: discovery
+  severity: [low, 18]
+  event:
+    timestamp: "2024-12-01T05:00:00Z"
+    source: suricata
+    host: dmz-disp-scan
+    user: scanner
+    raw:
+      src_ip: "10.60.2.15"
+      ticket: "CHG-66011"
+      message: "Nessus scan from 10.60.2.15 across 10.0.0.0/16 covered by CHG-66011"
+    message: "Nessus scan from 10.60.2.15 across 10.0.0.0/16 covered by CHG-66011"
+  evidence_field: raw.message
+  evidence_value: "covered by CHG-66011"
+  evidence_why: "Authorized vuln scan CIDR with change ticket."
+  summary: "Scheduled Nessus discovery — benign true positive."
+
+- id: disp-btp-aadconnect-sync
+  technique: {id: T1098, name: Account Manipulation, tactic: Persistence, confidence: 0.25}
+  disposition: benign_true_positive
+  category: persistence
+  severity: [low, 15]
+  event:
+    timestamp: "2024-12-01T06:00:00Z"
+    source: other
+    host: aadconnect-disp
+    user: MSOL_DISP01
+    raw:
+      operation: DirectorySync
+      message: "Azure AD Connect delta sync by MSOL_DISP01 — scheduled"
+    message: "Azure AD Connect delta sync by MSOL_DISP01 — scheduled"
+  evidence_field: raw.message
+  evidence_value: "Azure AD Connect delta sync"
+  evidence_why: "Known identity sync service account."
+  summary: "AAD Connect sync — benign true positive."
+
+- id: disp-btp-gha-runner-deploy
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.32}
+  disposition: benign_true_positive
+  category: command_and_control
+  severity: [low, 22]
+  event:
+    timestamp: "2024-12-01T07:15:00Z"
+    source: sysmon
+    host: gha-runner-disp-3
+    user: runner
+    raw:
+      Image: "C:\\actions-runner\\bin\\Runner.Worker.exe"
+      CommandLine: "Runner.Worker.exe run deploy.yml artifact=webapp.zip"
+      message: "GitHub Actions runner deploy webapp.zip on gha-runner-disp-3"
+    message: "GitHub Actions runner deploy webapp.zip on gha-runner-disp-3"
+  evidence_field: raw.Image
+  evidence_value: "C:\\actions-runner\\bin\\Runner.Worker.exe"
+  evidence_why: "Self-hosted CI runner deploying artifact."
+  summary: "GHA runner deploy — benign true positive."
+
+- id: disp-btp-sentinelone-update
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.22}
+  disposition: benign_true_positive
+  category: command_and_control
+  severity: [informational, 12]
+  event:
+    timestamp: "2024-12-01T08:00:00Z"
+    source: sysmon
+    host: wkstn-disp-4
+    user: SYSTEM
+    raw:
+      Image: "C:\\Program Files\\SentinelOne\\Sentinel Agent\\SentinelAgent.exe"
+      message: "SentinelOne agent self-update from official CDN"
+    message: "SentinelOne agent self-update from official CDN"
+  evidence_field: raw.Image
+  evidence_value: "C:\\Program Files\\SentinelOne\\Sentinel Agent\\SentinelAgent.exe"
+  evidence_why: "EDR self-update path."
+  summary: "SentinelOne update — benign true positive."
+
+- id: disp-btp-admin-rdp-chg
+  technique: {id: T1021.001, name: Remote Desktop Protocol, tactic: Lateral Movement, confidence: 0.35}
+  disposition: benign_true_positive
+  category: lateral_movement
+  severity: [low, 25]
+  event:
+    timestamp: "2024-12-01T09:00:00Z"
+    source: windows_security
+    host: jump-disp-02
+    user: CORP\\it.ops
+    raw:
+      EventID: 4624
+      LogonType: 10
+      ticket: "CHG-77120"
+      message: "RDP logon CORP\\it.ops to sql-disp-09 during CHG-77120 window"
+    message: "RDP logon CORP\\it.ops to sql-disp-09 during CHG-77120 window"
+  evidence_field: raw.message
+  evidence_value: "during CHG-77120 window"
+  evidence_why: "IT ops RDP inside approved change window."
+  summary: "Admin RDP with CHG — benign true positive."
+
+- id: disp-btp-k8s-cronjob
+  technique: {id: T1053.007, name: Container Orchestration Job, tactic: Persistence, confidence: 0.3}
+  disposition: benign_true_positive
+  category: persistence
+  severity: [low, 20]
+  event:
+    timestamp: "2024-12-01T10:00:00Z"
+    source: other
+    host: k8s-disp-ctrl
+    user: system:serviceaccount:ops:backup
+    raw:
+      message: "CronJob ops/pg-backup created Job pg-backup-2844110 in namespace ops"
+    message: "CronJob ops/pg-backup created Job pg-backup-2844110 in namespace ops"
+  evidence_field: raw.message
+  evidence_value: "CronJob ops/pg-backup created Job"
+  evidence_why: "Known backup CronJob in ops namespace."
+  summary: "K8s backup CronJob — benign true positive."
+
+- id: disp-btp-okta-breakglass-drill
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.3}
+  disposition: benign_true_positive
+  category: initial_access
+  severity: [low, 22]
+  event:
+    timestamp: "2024-12-01T11:00:00Z"
+    source: okta
+    host: okta-disp
+    user: breakglass.disp@contoso-disp.io
+    raw:
+      ticket: "DRILL-2024-Q4"
+      message: "Okta breakglass.disp login success during DRILL-2024-Q4 tabletop"
+    message: "Okta breakglass.disp login success during DRILL-2024-Q4 tabletop"
+  evidence_field: raw.message
+  evidence_value: "during DRILL-2024-Q4 tabletop"
+  evidence_why: "Scheduled break-glass drill."
+  summary: "Break-glass Okta drill — benign true positive."
+
+- id: disp-btp-veeam-backup
+  technique: {id: T1560.001, name: Archive via Utility, tactic: Collection, confidence: 0.22}
+  disposition: benign_true_positive
+  category: collection
+  severity: [informational, 10]
+  event:
+    timestamp: "2024-12-01T12:00:00Z"
+    source: sysmon
+    host: veeam-disp-1
+    user: veeamsvc
+    raw:
+      Image: "C:\\Program Files\\Veeam\\Backup and Replication\\Backup\\VeeamAgent.exe"
+      message: "VeeamAgent full backup job Finance-Shares"
+    message: "VeeamAgent full backup job Finance-Shares"
+  evidence_field: raw.Image
+  evidence_value: "C:\\Program Files\\Veeam\\Backup and Replication\\Backup\\VeeamAgent.exe"
+  evidence_why: "Scheduled backup product."
+  summary: "Veeam backup job — benign true positive."
+
+- id: disp-btp-snow-discovery
+  technique: {id: T1082, name: System Information Discovery, tactic: Discovery, confidence: 0.25}
+  disposition: benign_true_positive
+  category: discovery
+  severity: [informational, 12]
+  event:
+    timestamp: "2024-12-01T13:00:00Z"
+    source: sysmon
+    host: wkstn-disp-8
+    user: SYSTEM
+    raw:
+      Image: "C:\\Program Files\\ServiceNow\\Discovery\\MIDServer.exe"
+      message: "ServiceNow MIDServer inventory probe on wkstn-disp-8"
+    message: "ServiceNow MIDServer inventory probe on wkstn-disp-8"
+  evidence_field: raw.Image
+  evidence_value: "C:\\Program Files\\ServiceNow\\Discovery\\MIDServer.exe"
+  evidence_why: "ITSM discovery agent."
+  summary: "ServiceNow discovery — benign true positive."
+
+- id: disp-btp-wsus-update
+  technique: {id: T1072, name: Software Deployment Tools, tactic: Lateral Movement, confidence: 0.25}
+  disposition: benign_true_positive
+  category: lateral_movement
+  severity: [low, 14]
+  event:
+    timestamp: "2024-12-01T14:00:00Z"
+    source: sysmon
+    host: wkstn-disp-9
+    user: SYSTEM
+    raw:
+      Image: "C:\\Windows\\System32\\wuauclt.exe"
+      message: "wuauclt.exe installing KB5034441 from internal WSUS"
+    message: "wuauclt.exe installing KB5034441 from internal WSUS"
+  evidence_field: raw.message
+  evidence_value: "from internal WSUS"
+  evidence_why: "Corporate patch channel."
+  summary: "WSUS patch install — benign true positive."
+
+- id: disp-btp-terraform-apply-ticket
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.3}
+  disposition: benign_true_positive
+  category: initial_access
+  severity: [low, 24]
+  event:
+    timestamp: "2024-12-01T15:00:00Z"
+    source: cloudtrail
+    host: aws-disp-218
+    user: arn:aws:sts::218900:assumed-role/terraform-disp/run-902
+    raw:
+      eventName: CreateSecurityGroup
+      ticket: "CHG-88001"
+      message: "terraform-disp CreateSecurityGroup sg-disp-web covered by CHG-88001"
+    message: "terraform-disp CreateSecurityGroup sg-disp-web covered by CHG-88001"
+  evidence_field: raw.message
+  evidence_value: "covered by CHG-88001"
+  evidence_why: "IaC apply under change control."
+  summary: "Terraform SG create with CHG — benign true positive."
+
+- id: disp-btp-intune-script
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.3}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 18]
+  event:
+    timestamp: "2024-12-01T16:00:00Z"
+    source: sysmon
+    host: wkstn-disp-11
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Program Files (x86)\\Microsoft Intune Management Extension\\Microsoft.Management.Services.IntuneWindowsAgent.exe"
+      CommandLine: "powershell.exe -NoProfile -File C:\\Windows\\IMECache\\HealthCheck.ps1"
+      message: "IntuneWindowsAgent ran HealthCheck.ps1"
+    message: "IntuneWindowsAgent ran HealthCheck.ps1"
+  evidence_field: raw.ParentImage
+  evidence_value: "IntuneWindowsAgent.exe"
+  evidence_why: "MDM remediation script parent."
+  summary: "Intune health script — benign true positive."
+
+# ========== false_positive (detection noise / should tune) ==========
+- id: disp-fp-chrome-updater
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.15}
+  disposition: false_positive
+  category: command_and_control
+  severity: [informational, 8]
+  event:
+    timestamp: "2024-12-02T06:00:00Z"
+    source: sysmon
+    host: wkstn-disp-12
+    user: jsmith
+    raw:
+      Image: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      CommandLine: "chrome.exe --type=updater"
+      message: "Chrome updater --type=updater contacted update.googleapis.com"
+    message: "Chrome updater --type=updater contacted update.googleapis.com"
+  evidence_field: raw.CommandLine
+  evidence_value: "--type=updater"
+  evidence_why: "Browser auto-update — noisy FP."
+  summary: "Chrome updater — false positive."
+
+- id: disp-fp-defender-scan
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.12}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 7]
+  event:
+    timestamp: "2024-12-02T06:30:00Z"
+    source: sysmon
+    host: wkstn-disp-13
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+      CommandLine: "powershell.exe -NoProfile -Command Start-MpScan -ScanType QuickScan"
+      message: "MpCmdRun Start-MpScan QuickScan"
+    message: "MpCmdRun Start-MpScan QuickScan"
+  evidence_field: raw.ParentImage
+  evidence_value: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+  evidence_why: "Native Defender scan launcher — tune detection."
+  summary: "Defender QuickScan via PowerShell — false positive."
+
+- id: disp-fp-onedrive-sync
+  technique: {id: T1567.002, name: Exfiltration to Cloud Storage, tactic: Exfiltration, confidence: 0.18}
+  disposition: false_positive
+  category: exfiltration
+  severity: [informational, 9]
+  event:
+    timestamp: "2024-12-02T07:00:00Z"
+    source: sysmon
+    host: wkstn-disp-14
+    user: jsmith
+    raw:
+      Image: "C:\\Users\\jsmith\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe"
+      message: "OneDrive.exe syncing Documents to Contoso tenant"
+    message: "OneDrive.exe syncing Documents to Contoso tenant"
+  evidence_field: raw.Image
+  evidence_value: "OneDrive.exe"
+  evidence_why: "Corporate OneDrive client sync."
+  summary: "OneDrive sync — false positive."
+
+- id: disp-fp-siem-parser
+  technique: {id: T1078, name: Valid Accounts, tactic: Defense Evasion, confidence: 0.1}
+  disposition: false_positive
+  category: defense_evasion
+  severity: [informational, 5]
+  event:
+    timestamp: "2024-12-02T07:30:00Z"
+    source: other
+    host: siem-disp
+    user: parser
+    raw:
+      message: "SIEM parser false alert: duplicated EventID 4624 from timezone skew"
+    message: "SIEM parser false alert: duplicated EventID 4624 from timezone skew"
+  evidence_field: raw.message
+  evidence_value: "parser false alert: duplicated EventID 4624"
+  evidence_why: "Known parser defect — not a real incident."
+  summary: "SIEM parser duplicate — false positive."
+
+- id: disp-fp-cdn-ids
+  technique: {id: T1071.001, name: Web Protocols, tactic: Command and Control, confidence: 0.15}
+  disposition: false_positive
+  category: command_and_control
+  severity: [informational, 8]
+  event:
+    timestamp: "2024-12-02T08:00:00Z"
+    source: suricata
+    host: ids-disp-edge
+    raw:
+      dest: "cdn.jsdelivr.net"
+      message: "IDS C2 signature hit on cdn.jsdelivr.net for npm package fetch"
+    message: "IDS C2 signature hit on cdn.jsdelivr.net for npm package fetch"
+  evidence_field: raw.dest
+  evidence_value: "cdn.jsdelivr.net"
+  evidence_why: "Public CDN used by package managers — signature noise."
+  summary: "CDN IDS hit — false positive."
+
+- id: disp-fp-powershell-gethelp
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.1}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 6]
+  event:
+    timestamp: "2024-12-02T08:30:00Z"
+    source: sysmon
+    host: wkstn-disp-15
+    user: helpdesk
+    raw:
+      ParentImage: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell_ise.exe"
+      CommandLine: "powershell.exe -NoProfile -Command Get-Help Get-Process -Full"
+      message: "ISE Get-Help Get-Process -Full"
+    message: "ISE Get-Help Get-Process -Full"
+  evidence_field: raw.ParentImage
+  evidence_value: "powershell_ise.exe"
+  evidence_why: "Interactive help from ISE — not malicious."
+  summary: "PowerShell Get-Help from ISE — false positive."
+
+- id: disp-fp-teams-update
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.12}
+  disposition: false_positive
+  category: command_and_control
+  severity: [informational, 7]
+  event:
+    timestamp: "2024-12-02T09:00:00Z"
+    source: sysmon
+    host: wkstn-disp-16
+    user: jsmith
+    raw:
+      Image: "C:\\Users\\jsmith\\AppData\\Local\\Microsoft\\Teams\\Update.exe"
+      message: "Teams Update.exe downloading channel update"
+    message: "Teams Update.exe downloading channel update"
+  evidence_field: raw.Image
+  evidence_value: "Microsoft\\Teams\\Update.exe"
+  evidence_why: "Teams auto-updater."
+  summary: "Teams Update.exe — false positive."
+
+- id: disp-fp-zscaler-ssl
+  technique: {id: T1557, name: Adversary-in-the-Middle, tactic: Collection, confidence: 0.15}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 9]
+  event:
+    timestamp: "2024-12-02T09:30:00Z"
+    source: suricata
+    host: zscaler-disp
+    raw:
+      issuer: "Zscaler Intermediate Root CA (disp)"
+      message: "TLS intercept by Zscaler Intermediate Root CA (disp)"
+    message: "TLS intercept by Zscaler Intermediate Root CA (disp)"
+  evidence_field: raw.issuer
+  evidence_value: "Zscaler Intermediate Root CA (disp)"
+  evidence_why: "Corporate SWG SSL inspection."
+  summary: "Zscaler TLS intercept — false positive."
+
+- id: disp-fp-backup-compress
+  technique: {id: T1560.001, name: Archive via Utility, tactic: Collection, confidence: 0.15}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 8]
+  event:
+    timestamp: "2024-12-02T10:00:00Z"
+    source: sysmon
+    host: backup-disp-2
+    user: backupsvc
+    raw:
+      Image: "C:\\Windows\\System32\\tar.exe"
+      CommandLine: "tar.exe -czf E:\\nightly\\files.tgz D:\\Shares\\HR"
+      message: "nightly backup tar.exe -czf E:\\nightly\\files.tgz D:\\Shares\\HR"
+    message: "nightly backup tar.exe -czf E:\\nightly\\files.tgz D:\\Shares\\HR"
+  evidence_field: raw.message
+  evidence_value: "nightly backup tar.exe"
+  evidence_why: "Scheduled backup compress job."
+  summary: "Nightly tar backup — false positive."
+
+- id: disp-fp-windows-update
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.12}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 8]
+  event:
+    timestamp: "2024-12-02T10:30:00Z"
+    source: sysmon
+    host: wkstn-disp-17
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Windows\\System32\\svchost.exe"
+      CommandLine: "powershell.exe -NoProfile -Command Get-WindowsUpdateLog"
+      message: "Windows Update Get-WindowsUpdateLog via svchost"
+    message: "Windows Update Get-WindowsUpdateLog via svchost"
+  evidence_field: raw.message
+  evidence_value: "Get-WindowsUpdateLog via svchost"
+  evidence_why: "OS update diagnostics — noisy."
+  summary: "Windows Update log gather — false positive."
+
+# ========== needs_more_data (ambiguous / incomplete) ==========
+- id: disp-nmd-single-failed-login
+  technique: {id: T1110.001, name: Password Guessing, tactic: Credential Access, confidence: 0.35}
+  disposition: needs_more_data
+  category: credential_access
+  severity: [informational, 20]
+  event:
+    timestamp: "2024-12-03T01:00:00Z"
+    source: auth
+    host: vpn-disp
+    user: mlee
+    raw:
+      failures: 1
+      message: "single VPN auth failure for mlee from 203.0.113.44"
+    message: "single VPN auth failure for mlee from 203.0.113.44"
+  evidence_field: raw.message
+  evidence_value: "single VPN auth failure"
+  evidence_why: "One failure is weak — need volume / success follow-up."
+  summary: "Isolated VPN failure; needs more data."
+
+- id: disp-nmd-one-dns-query
+  technique: {id: T1071.004, name: DNS, tactic: Command and Control, confidence: 0.35}
+  disposition: needs_more_data
+  category: command_and_control
+  severity: [low, 28]
+  event:
+    timestamp: "2024-12-03T02:00:00Z"
+    source: zeek
+    host: dns-disp
+    raw:
+      query: "ping.edge-metrics-disp.example"
+      message: "single A query ping.edge-metrics-disp.example from 10.4.4.9"
+    message: "single A query ping.edge-metrics-disp.example from 10.4.4.9"
+  evidence_field: raw.query
+  evidence_value: "ping.edge-metrics-disp.example"
+  evidence_why: "One odd DNS label — need beaconing stats."
+  summary: "Single unusual DNS A; needs more data."
+
+- id: disp-nmd-get-process
+  technique: {id: T1057, name: Process Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 18]
+  event:
+    timestamp: "2024-12-03T03:00:00Z"
+    source: sysmon
+    host: wkstn-disp-18
+    user: achan
+    raw:
+      CommandLine: "powershell.exe -NoProfile -Command Get-Process"
+      message: "powershell Get-Process only — no follow-on"
+    message: "powershell Get-Process only — no follow-on"
+  evidence_field: raw.message
+  evidence_value: "Get-Process only — no follow-on"
+  evidence_why: "Benign admin or recon start — incomplete chain."
+  summary: "Lone Get-Process; needs more data."
+
+- id: disp-nmd-partial-cloudtrail
+  technique: {id: T1087.004, name: Cloud Account, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 30]
+  event:
+    timestamp: "2024-12-03T04:00:00Z"
+    source: cloudtrail
+    host: aws-disp-218
+    user: arn:aws:iam::218900:user/contractor.disp
+    raw:
+      eventName: ListUsers
+      message: "contractor.disp ListUsers once — no GetAccountAuthorizationDetails"
+    message: "contractor.disp ListUsers once — no GetAccountAuthorizationDetails"
+  evidence_field: raw.message
+  evidence_value: "ListUsers once — no GetAccountAuthorizationDetails"
+  evidence_why: "Single IAM list without privilege escalation context."
+  summary: "Partial CloudTrail IAM list; needs more data."
+
+- id: disp-nmd-mfa-success-new-device
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 42]
+  event:
+    timestamp: "2024-12-03T05:00:00Z"
+    source: okta
+    host: okta-disp
+    user: sales.disp@contoso-disp.io
+    raw:
+      mfa: "success"
+      device: "unknown-ios"
+      message: "Okta MFA success sales.disp from unknown-ios — no Device Trust yet"
+    message: "Okta MFA success sales.disp from unknown-ios — no Device Trust yet"
+  evidence_field: raw.message
+  evidence_value: "unknown-ios — no Device Trust yet"
+  evidence_why: "MFA ok but device unknown — need MDM posture."
+  summary: "New device Okta success; needs more data."
+
+- id: disp-nmd-ldap-attr-read
+  technique: {id: T1087.002, name: Domain Account, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 22]
+  event:
+    timestamp: "2024-12-03T06:00:00Z"
+    source: windows_security
+    host: dc-disp-01
+    user: CORP\\svc_hr
+    raw:
+      EventID: 4662
+      ObjectName: "CN=jsmith,OU=Users,DC=corp,DC=disp"
+      message: "LDAP read mail attribute for CN=jsmith by svc_hr"
+    message: "LDAP read mail attribute for CN=jsmith by svc_hr"
+  evidence_field: raw.message
+  evidence_value: "LDAP read mail attribute for CN=jsmith"
+  evidence_why: "Single attribute read — may be HR app."
+  summary: "Single LDAP attr read; needs more data."
+
+- id: disp-nmd-rare-aws-region
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.42}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 45]
+  event:
+    timestamp: "2024-12-03T07:00:00Z"
+    source: cloudtrail
+    host: aws-disp-218
+    user: arn:aws:iam::218900:user/dev.disp
+    raw:
+      eventName: ConsoleLogin
+      region: "ap-southeast-3"
+      mfa: "success"
+      message: "ConsoleLogin MFA success for dev.disp in ap-southeast-3 first-seen region"
+    message: "ConsoleLogin MFA success for dev.disp in ap-southeast-3 first-seen region"
+  evidence_field: raw.message
+  evidence_value: "ap-southeast-3 first-seen region"
+  evidence_why: "Unusual region but MFA — need travel / VPN context."
+  summary: "First-seen AWS region login; needs more data."
+
+- id: disp-nmd-schtasks-query
+  technique: {id: T1053.005, name: Scheduled Task, tactic: Persistence, confidence: 0.35}
+  disposition: needs_more_data
+  category: persistence
+  severity: [informational, 20]
+  event:
+    timestamp: "2024-12-03T08:00:00Z"
+    source: sysmon
+    host: wkstn-disp-19
+    user: achan
+    raw:
+      CommandLine: "schtasks.exe /Query /FO LIST"
+      message: "schtasks.exe /Query /FO LIST with no /Create"
+    message: "schtasks.exe /Query /FO LIST with no /Create"
+  evidence_field: raw.message
+  evidence_value: "schtasks.exe /Query /FO LIST with no /Create"
+  evidence_why: "Query-only — incomplete persistence signal."
+  summary: "schtasks query only; needs more data."
+
+- id: disp-nmd-graph-me
+  technique: {id: T1087.004, name: Cloud Account, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 18]
+  event:
+    timestamp: "2024-12-03T09:00:00Z"
+    source: other
+    host: entra-disp
+    user: achan@contoso-disp.io
+    raw:
+      operation: GET /me
+      message: "Graph GET /me by achan@contoso-disp.io — no directory role enum"
+    message: "Graph GET /me by achan@contoso-disp.io — no directory role enum"
+  evidence_field: raw.message
+  evidence_value: "GET /me by achan@contoso-disp.io — no directory role enum"
+  evidence_why: "Self-profile read is common app behavior."
+  summary: "Graph /me only; needs more data."
+
+- id: disp-nmd-smb-enum-share
+  technique: {id: T1135, name: Network Share Discovery, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 28]
+  event:
+    timestamp: "2024-12-03T10:00:00Z"
+    source: windows_security
+    host: fs-disp-01
+    user: CORP\\jsmith
+    raw:
+      EventID: 5140
+      ShareName: "\\\\fs-disp-01\\Public"
+      message: "single share access Public by jsmith — no sensitive share"
+    message: "single share access Public by jsmith — no sensitive share"
+  evidence_field: raw.message
+  evidence_value: "single share access Public"
+  evidence_why: "Public share touch may be normal — need pattern."
+  summary: "One Public share access; needs more data."
+
+# ========== true_positive contrast (clear malice — keep minority) ==========
+- id: disp-tp-ps-enc-no-ticket
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.9}
+  disposition: true_positive
+  category: execution
+  severity: [critical, 92]
+  event:
+    timestamp: "2024-12-04T09:00:00Z"
+    source: sysmon
+    host: finance-disp-1
+    user: CORP\\tmp.admin
+    raw:
+      CommandLine: "powershell.exe -NoP -W Hidden -Enc SQBFAFgA"
+      ParentImage: "C:\\Users\\tmp.admin\\AppData\\Local\\Temp\\update.exe"
+      message: "Hidden encoded PowerShell from Temp\\update.exe — no CHG"
+    message: "Hidden encoded PowerShell from Temp\\update.exe — no CHG"
+  evidence_field: raw.message
+  evidence_value: "Hidden encoded PowerShell from Temp\\update.exe — no CHG"
+  evidence_why: "Encoded PS from user Temp without change control."
+  summary: "Encoded PowerShell from Temp — true positive."
+
+- id: disp-tp-rdp-no-chg
+  technique: {id: T1021.001, name: Remote Desktop Protocol, tactic: Lateral Movement, confidence: 0.85}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [high, 80]
+  event:
+    timestamp: "2024-12-04T10:00:00Z"
+    source: windows_security
+    host: jump-disp-02
+    user: CORP\\contractor.off
+    raw:
+      EventID: 4624
+      LogonType: 10
+      message: "RDP CORP\\contractor.off to sql-disp-09 at 02:14 UTC — no CHG, off-hours"
+    message: "RDP CORP\\contractor.off to sql-disp-09 at 02:14 UTC — no CHG, off-hours"
+  evidence_field: raw.message
+  evidence_value: "no CHG, off-hours"
+  evidence_why: "Off-hours contractor RDP without ticket."
+  summary: "Unauthorized off-hours RDP — true positive."
+
+- id: disp-tp-okta-mfa-fatigue
+  technique: {id: T1621, name: Multi-Factor Authentication Request Generation, tactic: Credential Access, confidence: 0.88}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 84]
+  event:
+    timestamp: "2024-12-04T11:00:00Z"
+    source: okta
+    host: okta-disp
+    user: cfo@contoso-disp.io
+    raw:
+      denies: 31
+      message: "31 Okta Verify push denials for cfo@contoso-disp.io from 185.220.101.40"
+    message: "31 Okta Verify push denials for cfo@contoso-disp.io from 185.220.101.40"
+  evidence_field: raw.message
+  evidence_value: "31 Okta Verify push denials"
+  evidence_why: "MFA fatigue flood from Tor-ish IP."
+  summary: "Okta MFA fatigue — true positive."
+
+- id: disp-tp-procdump-lsass
+  technique: {id: T1003.001, name: LSASS Memory, tactic: Credential Access, confidence: 0.93}
+  disposition: true_positive
+  category: credential_access
+  severity: [critical, 96]
+  event:
+    timestamp: "2024-12-04T12:00:00Z"
+    source: sysmon
+    host: dc-disp-01
+    user: CORP\\helpdesk.temp
+    raw:
+      SourceImage: "C:\\Users\\Public\\pd64.exe"
+      TargetImage: "C:\\Windows\\System32\\lsass.exe"
+      message: "pd64.exe accessed lsass.exe — not a signed backup tool"
+    message: "pd64.exe accessed lsass.exe — not a signed backup tool"
+  evidence_field: raw.message
+  evidence_value: "pd64.exe accessed lsass.exe"
+  evidence_why: "Unsigned dump tool on DC."
+  summary: "LSASS access via pd64 — true positive."
+
+- id: disp-tp-evil-schtask
+  technique: {id: T1053.005, name: Scheduled Task, tactic: Persistence, confidence: 0.86}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 78]
+  event:
+    timestamp: "2024-12-04T13:00:00Z"
+    source: sysmon
+    host: wkstn-disp-20
+    user: jsmith
+    raw:
+      CommandLine: "schtasks.exe /Create /TN \\Microsoft\\Windows\\CTA\\Health /TR C:\\Users\\jsmith\\AppData\\Roaming\\h.exe /SC ONLOGON /F"
+      message: "schtasks Create masquerade CTA\\Health -> AppData\\h.exe"
+    message: "schtasks Create masquerade CTA\\Health -> AppData\\h.exe"
+  evidence_field: raw.message
+  evidence_value: "masquerade CTA\\Health -> AppData\\h.exe"
+  evidence_why: "Persistence task to user AppData binary."
+  summary: "Masquerading scheduled task — true positive."
+
+- id: disp-tp-exfil-mega
+  technique: {id: T1567.002, name: Exfiltration to Cloud Storage, tactic: Exfiltration, confidence: 0.9}
+  disposition: true_positive
+  category: exfiltration
+  severity: [critical, 90]
+  event:
+    timestamp: "2024-12-04T14:00:00Z"
+    source: zeek
+    host: proxy-disp
+    user: finance.disp
+    raw:
+      dest: "mega.nz"
+      bytes: 4800000000
+      message: "4.8GB HTTPS upload to mega.nz from finance.disp workstation"
+    message: "4.8GB HTTPS upload to mega.nz from finance.disp workstation"
+  evidence_field: raw.message
+  evidence_value: "4.8GB HTTPS upload to mega.nz"
+  evidence_why: "Large personal cloud exfil from finance."
+  summary: "Bulk mega.nz upload — true positive."
+
+- id: disp-tp-aws-console-no-mfa
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.84}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 82]
+  event:
+    timestamp: "2024-12-04T15:00:00Z"
+    source: cloudtrail
+    host: aws-disp-218
+    user: arn:aws:iam::218900:user/breakglass.disp
+    raw:
+      eventName: ConsoleLogin
+      mfa: "false"
+      message: "ConsoleLogin breakglass.disp MFA=false from 45.33.32.156 — not a drill"
+    message: "ConsoleLogin breakglass.disp MFA=false from 45.33.32.156 — not a drill"
+  evidence_field: raw.message
+  evidence_value: "MFA=false from 45.33.32.156 — not a drill"
+  evidence_why: "Break-glass without MFA outside drill."
+  summary: "Break-glass console no MFA — true positive."
+
+- id: disp-tp-impacket-secretsdump
+  technique: {id: T1003.006, name: DCSync, tactic: Credential Access, confidence: 0.92}
+  disposition: true_positive
+  category: credential_access
+  severity: [critical, 95]
+  event:
+    timestamp: "2024-12-04T16:00:00Z"
+    source: windows_security
+    host: dc-disp-01
+    user: CORP\\svc_sql
+    raw:
+      EventID: 4662
+      Properties: "Replicating Directory Changes All"
+      message: "DCSync-like replication rights used by CORP\\svc_sql — not a DC"
+    message: "DCSync-like replication rights used by CORP\\svc_sql — not a DC"
+  evidence_field: raw.message
+  evidence_value: "DCSync-like replication rights used by CORP\\svc_sql"
+  evidence_why: "Non-DC account performing replication."
+  summary: "DCSync from sql service account — true positive."

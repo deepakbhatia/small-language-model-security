@@ -68,6 +68,45 @@ def _stages(arg: str, default: list[int]) -> list[int]:
     return default
 
 
+def _example_disposition(ex: dict) -> str | None:
+    try:
+        return json.loads(ex["messages"][2]["content"])["incident"]["disposition"]
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def downsample_true_positives(
+    rows: list[dict],
+    *,
+    max_tp_frac: float,
+    seed: int,
+) -> list[dict]:
+    """Keep all non-TP; cap true_positive share to max_tp_frac of the final set."""
+    if max_tp_frac is None or max_tp_frac >= 1.0 or not rows:
+        return rows
+    max_tp_frac = max(0.0, float(max_tp_frac))
+    non_tp = [r for r in rows if _example_disposition(r) != "true_positive"]
+    tp = [r for r in rows if _example_disposition(r) == "true_positive"]
+    if not tp:
+        return rows
+    # Final size ≈ non_tp + tp_keep; want tp_keep / (non_tp + tp_keep) <= max_tp_frac
+    # => tp_keep <= max_tp_frac / (1 - max_tp_frac) * len(non_tp)
+    if max_tp_frac <= 0.0:
+        return non_tp
+    if not non_tp:
+        # all TP — keep a small sample so we don't empty the set
+        rng = random.Random(seed)
+        rng.shuffle(tp)
+        return tp[: max(1, int(round(len(tp) * max_tp_frac)))]
+    max_tp = int(max_tp_frac / (1.0 - max_tp_frac) * len(non_tp))
+    max_tp = max(0, min(len(tp), max_tp))
+    rng = random.Random(seed)
+    rng.shuffle(tp)
+    kept = non_tp + tp[:max_tp]
+    rng.shuffle(kept)
+    return kept
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("data/processed/v1"))
@@ -131,6 +170,13 @@ def main() -> None:
     )
     parser.add_argument("--ood-limit", type=int, default=None)
     parser.add_argument("--ood-variants", type=int, default=3, help="Host/user variants per OOD scenario")
+    parser.add_argument(
+        "--max-tp-frac",
+        type=float,
+        default=None,
+        help="After verify, downsample true_positive rows to this fraction of the kept set "
+        "(e.g. 0.35 for disposition-heavy mixes). Non-TP rows are always kept.",
+    )
     parser.add_argument("--val-ratio", type=float, default=0.2)
     parser.add_argument("--val-monitor-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
@@ -245,6 +291,19 @@ def main() -> None:
 
     if not kept:
         raise SystemExit(f"no examples kept (dropped={dropped} reasons={drop_reasons})")
+
+    if args.max_tp_frac is not None:
+        before = len(kept)
+        kept = downsample_true_positives(kept, max_tp_frac=args.max_tp_frac, seed=args.seed)
+        from collections import Counter
+
+        disp_c = Counter(_example_disposition(r) for r in kept)
+        print(
+            f"max-tp-frac={args.max_tp_frac}: kept {len(kept)}/{before} "
+            f"dispositions={dict(disp_c)}"
+        )
+        if not kept:
+            raise SystemExit("no examples left after --max-tp-frac downsample")
 
     train, val_full = split_by_group(kept, val_ratio=args.val_ratio, seed=args.seed)
     rng = random.Random(args.seed)

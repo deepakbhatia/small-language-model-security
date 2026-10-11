@@ -39,12 +39,19 @@ def load_ood_train_scenarios(
     stages: list[int],
     limit: int | None = None,
     variants_per: int = 3,
+    source: str = "ood-train",
+    split: str = "ood_train",
 ) -> list[dict[str, Any]]:
     path = path or DEFAULT_OOD
     if is_held_out_path(path):
         raise SystemExit(f"Refusing OOD train load of sealed held_out path: {path}")
     if not path.exists():
         return []
+    # Infer provenance label from path when caller uses default source
+    path_s = str(path).replace("\\", "/")
+    if source == "ood-train" and "/disposition/" in path_s:
+        source = "disposition-train"
+        split = "disposition_train"
     docs = yaml.safe_load(path.read_text()) or []
     examples: list[dict[str, Any]] = []
     for sc in docs:
@@ -62,12 +69,14 @@ def load_ood_train_scenarios(
             for st in stages:
                 ex = _scenario_to_example(variant, stage=st, sealed_held_out=False)
                 # Force train-safe provenance (never held_out flags)
-                ex["meta"]["source"] = "ood-train"
+                ex["meta"]["source"] = source
                 ex["meta"]["license"] = "Apache-2.0"
                 ex["meta"]["synthetic"] = True
                 ex["meta"].pop("blind_held_out", None)
                 if ex["meta"].get("split") == "held_out_never_train":
-                    ex["meta"]["split"] = "ood_train"
+                    ex["meta"]["split"] = split
+                elif source == "disposition-train":
+                    ex["meta"]["split"] = split
                 # stable id
                 digest = hashlib.sha1(ex["id"].encode()).hexdigest()[:8]
                 ex["id"] = f"{ex['id']}-{digest}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch an EC2 GPU instance that runs SEI train (smoke/stage1/stage2/attack/ood) then shuts down.
+"""Launch an EC2 GPU instance that runs SEI train (smoke|stage1|stage2|attack|ood|disposition).
 
 Examples:
   # Smoke
@@ -32,6 +32,13 @@ Examples:
     --adapter-s3 s3://bucket/sei-adapter-ood/ \\
     --guide-s3 s3://bucket/GUIDE_Train.csv \\
     --guide-limit 3000 --guide-offset 100000 ...
+
+  # Disposition hard-negatives (resume ood adapter)
+  python scripts/aws/launch.py --mode disposition --wait \\
+    --resume-adapter-s3 s3://bucket/sei-adapter-ood/ \\
+    --adapter-s3 s3://bucket/sei-adapter-disposition/ \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv \\
+    --guide-limit 15000 --guide-offset 120000 ...
 """
 
 from __future__ import annotations
@@ -76,12 +83,14 @@ sleep 5
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SEI AWS GPU launch (smoke|full|stage1|stage2|attack|ood)")
+    parser = argparse.ArgumentParser(
+        description="SEI AWS GPU launch (smoke|full|stage1|stage2|attack|ood|disposition)"
+    )
     parser.add_argument(
         "--mode",
-        choices=["smoke", "full", "stage1", "stage2", "attack", "ood"],
+        choices=["smoke", "full", "stage1", "stage2", "attack", "ood", "disposition"],
         default="smoke",
-        help="full/stage1=GUIDE; stage2=GUIDE techniques; attack=Atomic+Sigma+OTRF; ood=SaaS/IdP OOD train",
+        help="attack=Atomic+Sigma+OTRF; ood=SaaS/IdP; disposition=hard-neg BTP/FP/NMD",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
@@ -123,8 +132,11 @@ def main() -> None:
     # stage2 trains techniques on up to 50k rows from the start at stage=2.
     # attack: optional small GUIDE mix; Atomic/Sigma downloaded on box.
     # ood: train-safe SaaS/IdP scenarios + light Atomic/OTRF; resume attack adapter.
+    # disposition: hard-neg BTP/FP/NMD + GUIDE with TP cap; resume ood adapter.
     if args.guide_limit is None:
-        if args.mode == "ood":
+        if args.mode == "disposition":
+            args.guide_limit = 15000
+        elif args.mode == "ood":
             args.guide_limit = 3000
         elif args.mode == "attack":
             args.guide_limit = 5000
@@ -135,12 +147,14 @@ def main() -> None:
     if args.guide_offset is None:
         if args.mode == "stage1":
             args.guide_offset = 20000
+        elif args.mode == "disposition":
+            args.guide_offset = 120000
         elif args.mode == "ood":
             args.guide_offset = 100000
         else:
             args.guide_offset = 0
     if args.guide_stage is None:
-        if args.mode == "ood":
+        if args.mode in {"ood", "disposition"}:
             args.guide_stage = 4
         elif args.mode in {"stage2", "attack"}:
             args.guide_stage = 2
@@ -153,8 +167,8 @@ def main() -> None:
 
     if args.mode in {"full", "stage1", "stage2"} and not args.guide_s3 and not args.dry_run:
         parser.error("--guide-s3 is required for --mode full|stage1|stage2")
-    if args.mode in {"stage2", "attack", "ood"} and not args.resume_adapter_s3 and not args.dry_run:
-        parser.error("--resume-adapter-s3 is required for --mode stage2|attack|ood")
+    if args.mode in {"stage2", "attack", "ood", "disposition"} and not args.resume_adapter_s3 and not args.dry_run:
+        parser.error("--resume-adapter-s3 is required for --mode stage2|attack|ood|disposition")
     if args.mode == "stage1" and not args.resume_adapter_s3 and not args.dry_run:
         print(
             "WARNING: --resume-adapter-s3 unset; stage1 will train a fresh adapter "
@@ -284,6 +298,7 @@ def main() -> None:
             "stage2": "sei-logs/STAGE2_OK",
             "attack": "sei-logs/ATTACK_OK",
             "ood": "sei-logs/OOD_OK",
+            "disposition": "sei-logs/DISPOSITION_OK",
         }
         key = markers.get(args.mode)
         if key:
