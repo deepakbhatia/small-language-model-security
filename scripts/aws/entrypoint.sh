@@ -468,6 +468,7 @@ elif [[ "$MODE" == "disposition" ]]; then
 
 elif [[ "$MODE" == "orpo" ]]; then
   echo "[sei] ORPO alignment (disposition/evidence mistakes), resume disposition adapter"
+  export TRL_EXPERIMENTAL_SILENCE=1
   if [[ -z "$RESUME_ADAPTER_S3" ]]; then
     echo "[sei] ERROR: orpo mode requires SEI_RESUME_ADAPTER_S3 (sei-adapter-disposition recommended)" >&2
     exit 3

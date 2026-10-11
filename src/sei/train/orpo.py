@@ -59,11 +59,19 @@ def main(argv: list[str] | None = None) -> None:
     if args.dry_run or cfg.get("dry_run"):
         return
 
+    import os
+
     import torch
     from datasets import Dataset
     from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from trl import ORPOConfig, ORPOTrainer
+
+    # TRL ≥1.x moved ORPO out of the top-level export (experimental).
+    os.environ.setdefault("TRL_EXPERIMENTAL_SILENCE", "1")
+    try:
+        from trl import ORPOConfig, ORPOTrainer
+    except ImportError:  # pragma: no cover - depends on installed trl
+        from trl.experimental.orpo import ORPOConfig, ORPOTrainer
 
     from sei.train.chat_template import LLAMA3_CHAT_TEMPLATE
 
