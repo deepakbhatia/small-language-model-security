@@ -10,7 +10,7 @@ import random
 from pathlib import Path
 
 from sei.compose.atomic import load_atomic_dir
-from sei.compose.guide import guide_row_to_example
+from sei.compose.guide import guide_row_to_example, load_guide_balanced
 from sei.compose.ood import load_ood_train_scenarios
 from sei.compose.otrf import load_otrf_jsonl, load_otrf_scenarios
 from sei.compose.sigma import load_sigma_dir
@@ -115,6 +115,24 @@ def main() -> None:
     parser.add_argument("--guide-offset", type=int, default=0)
     parser.add_argument("--guide-stage", type=int, default=1)
     parser.add_argument(
+        "--guide-per-class",
+        type=int,
+        default=None,
+        help="Stratified GUIDE: take up to N examples per disposition (overrides --guide-limit)",
+    )
+    parser.add_argument(
+        "--guide-scan-limit",
+        type=int,
+        default=None,
+        help="Max GUIDE rows to scan when using --guide-per-class (default: 200000)",
+    )
+    parser.add_argument(
+        "--guide-window-size",
+        type=int,
+        default=1,
+        help="Group GUIDE alerts by IncidentId into multi-event windows (1=single alert)",
+    )
+    parser.add_argument(
         "--seed-stages",
         default="",
         help="Synthetic seed stages (default: 1..guide-stage; empty with --no-seed to skip)",
@@ -211,17 +229,36 @@ def main() -> None:
         print(f"synthetic seed stages={seed_stages} n={len(examples)}")
 
     if args.guide and args.guide.exists():
-        g = load_guide_csv(
-            args.guide,
-            limit=args.guide_limit,
-            stage=args.guide_stage,
-            offset=args.guide_offset,
-        )
-        examples.extend(g)
-        print(
-            f"loaded GUIDE n={len(g)} from {args.guide} "
-            f"(offset={args.guide_offset} limit={args.guide_limit} stage={args.guide_stage})"
-        )
+        if args.guide_per_class is not None:
+            g = load_guide_balanced(
+                args.guide,
+                per_class=args.guide_per_class,
+                stage=args.guide_stage,
+                offset=args.guide_offset,
+                scan_limit=args.guide_scan_limit or 200000,
+                window_size=args.guide_window_size,
+            )
+            from collections import Counter
+
+            disp_c = Counter(_example_disposition(r) for r in g)
+            examples.extend(g)
+            print(
+                f"loaded GUIDE balanced n={len(g)} per_class={args.guide_per_class} "
+                f"window={args.guide_window_size} dispositions={dict(disp_c)} "
+                f"(offset={args.guide_offset} stage={args.guide_stage})"
+            )
+        else:
+            g = load_guide_csv(
+                args.guide,
+                limit=args.guide_limit,
+                stage=args.guide_stage,
+                offset=args.guide_offset,
+            )
+            examples.extend(g)
+            print(
+                f"loaded GUIDE n={len(g)} from {args.guide} "
+                f"(offset={args.guide_offset} limit={args.guide_limit} stage={args.guide_stage})"
+            )
     elif args.guide:
         print(f"GUIDE path missing: {args.guide}")
 

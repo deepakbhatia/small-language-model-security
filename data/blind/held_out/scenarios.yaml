@@ -521,3 +521,491 @@
   evidence_value: "from São Paulo after Austin baseline"
   evidence_why: "Impossible-travel-ish signal but MFA succeeded — need device posture."
   summary: "Geo-anomalous Okta login; needs more endpoint context."
+
+# --- expanded product surfaces (eval-only; never train) ---
+
+# IdP / Okta
+- id: heldout-okta-session-hijack-v2
+  product_surface: idp
+  technique: {id: T1550.004, name: Web Session Cookie, tactic: Defense Evasion, confidence: 0.86}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 83]
+  event:
+    timestamp: "2025-04-01T01:10:00Z"
+    source: okta
+    host: okta-tenant-held
+    user: ciso.held@example.com
+    raw:
+      message: "Okta session token reuse for ciso.held from ASN Tor exit after MFA earlier in Austin"
+    message: "Okta session token reuse for ciso.held from ASN Tor exit after MFA earlier in Austin"
+  evidence_field: raw.message
+  evidence_value: "session token reuse"
+  evidence_why: "Cookie replay across geo."
+  summary: "Okta session hijack signal."
+
+- id: heldout-btp-okta-travel-policy
+  product_surface: idp
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.3}
+  disposition: benign_true_positive
+  category: initial_access
+  severity: [low, 20]
+  event:
+    timestamp: "2025-04-01T12:00:00Z"
+    source: okta
+    host: okta-tenant-held
+    user: exec.travel@example.com
+    raw:
+      ticket: "TRAVEL-8841"
+      message: "Okta login exec.travel from Singapore covered by TRAVEL-8841 policy exception"
+    message: "Okta login exec.travel from Singapore covered by TRAVEL-8841 policy exception"
+  evidence_field: raw.message
+  evidence_value: "covered by TRAVEL-8841"
+  evidence_why: "Pre-approved travel exception."
+  summary: "Travel-policy Okta login — BTP."
+
+- id: heldout-nmd-okta-new-device
+  product_surface: idp
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 42]
+  event:
+    timestamp: "2025-04-01T15:00:00Z"
+    source: okta
+    host: okta-tenant-held
+    user: pm.held@example.com
+    raw:
+      message: "Okta MFA success pm.held on unknown-macos — Device Trust pending"
+    message: "Okta MFA success pm.held on unknown-macos — Device Trust pending"
+  evidence_field: raw.message
+  evidence_value: "Device Trust pending"
+  evidence_why: "MFA ok; posture incomplete."
+  summary: "New Mac Okta login; needs more data."
+
+# Cloud audit / AWS
+- id: heldout-aws-disable-trail
+  product_surface: cloud_audit
+  technique: {id: T1070.004, name: File Deletion, tactic: Defense Evasion, confidence: 0.9}
+  disposition: true_positive
+  category: defense_evasion
+  severity: [critical, 94]
+  event:
+    timestamp: "2025-04-02T03:00:00Z"
+    source: cloudtrail
+    host: aws-held-99
+    user: arn:aws:iam::999001:user/breakglass.held
+    raw:
+      message: "StopLogging on trail org-held-trail by breakglass.held — not a drill"
+    message: "StopLogging on trail org-held-trail by breakglass.held — not a drill"
+  evidence_field: raw.message
+  evidence_value: "StopLogging on trail org-held-trail"
+  evidence_why: "Disabling org trail outside drill."
+  summary: "CloudTrail StopLogging by breakglass."
+
+- id: heldout-btp-aws-terraform-chg
+  product_surface: cloud_audit
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.28}
+  disposition: benign_true_positive
+  category: initial_access
+  severity: [low, 18]
+  event:
+    timestamp: "2025-04-02T10:00:00Z"
+    source: cloudtrail
+    host: aws-held-99
+    user: arn:aws:sts::999001:assumed-role/terraform-held/run-12
+    raw:
+      message: "terraform-held CreateSecurityGroup covered by CHG-held-2201"
+    message: "terraform-held CreateSecurityGroup covered by CHG-held-2201"
+  evidence_field: raw.message
+  evidence_value: "covered by CHG-held-2201"
+  evidence_why: "IaC under change control."
+  summary: "Terraform SG create with CHG — BTP."
+
+- id: heldout-nmd-aws-listbuckets
+  product_surface: cloud_audit
+  technique: {id: T1619, name: Cloud Storage Object Discovery, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 25]
+  event:
+    timestamp: "2025-04-02T11:00:00Z"
+    source: cloudtrail
+    host: aws-held-99
+    user: arn:aws:iam::999001:user/analyst.held
+    raw:
+      message: "analyst.held ListBuckets once — no GetObject"
+    message: "analyst.held ListBuckets once — no GetObject"
+  evidence_field: raw.message
+  evidence_value: "ListBuckets once — no GetObject"
+  evidence_why: "Single discovery without read."
+  summary: "Lone ListBuckets; needs more data."
+
+- id: heldout-aws-window-exfil
+  product_surface: cloud_audit
+  technique: {id: T1530, name: Data from Cloud Storage, tactic: Collection, confidence: 0.88}
+  disposition: true_positive
+  category: collection
+  severity: [critical, 91]
+  events:
+    - timestamp: "2025-04-02T20:00:00Z"
+      source: cloudtrail
+      host: aws-held-99
+      user: arn:aws:iam::999001:user/contractor.held
+      raw:
+        message: "contractor.held GetObject s3://held-finance-prod/ledger.parquet"
+      message: "contractor.held GetObject s3://held-finance-prod/ledger.parquet"
+    - timestamp: "2025-04-02T20:05:00Z"
+      source: cloudtrail
+      host: aws-held-99
+      user: arn:aws:iam::999001:user/contractor.held
+      raw:
+        message: "contractor.held PutObject to s3://held-exfil-drop/ledger.parquet — cross-account"
+      message: "contractor.held PutObject to s3://held-exfil-drop/ledger.parquet — cross-account"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "GetObject s3://held-finance-prod/ledger.parquet", why: "Sensitive read"}
+    - {telemetry_index: 1, field: raw.message, value: "PutObject to s3://held-exfil-drop", why: "Cross-account write"}
+  summary: "Finance S3 read then cross-account put — TP."
+
+# Email / M365
+- id: heldout-m365-inbox-rule
+  product_surface: email
+  technique: {id: T1114.003, name: Email Forwarding Rule, tactic: Collection, confidence: 0.87}
+  disposition: true_positive
+  category: collection
+  severity: [high, 86]
+  event:
+    timestamp: "2025-04-03T09:00:00Z"
+    source: other
+    host: m365-held
+    user: ap@example.com
+    raw:
+      message: "Hidden inbox rule .. on ap@example.com redirects to drop@yandex-team-mail.ru"
+    message: "Hidden inbox rule .. on ap@example.com redirects to drop@yandex-team-mail.ru"
+  evidence_field: raw.message
+  evidence_value: "redirects to drop@yandex-team-mail.ru"
+  evidence_why: "Concealed forward of AP mailbox."
+  summary: "Malicious M365 inbox rule."
+
+- id: heldout-bec-supplier
+  product_surface: email
+  technique: {id: T1566.002, name: Spearphishing Link, tactic: Initial Access, confidence: 0.8}
+  disposition: true_positive
+  category: initial_access
+  severity: [high, 78]
+  event:
+    timestamp: "2025-04-03T10:00:00Z"
+    source: other
+    host: m365-held
+    user: finance.held@example.com
+    raw:
+      message: "BEC: supplier payment rewrite to IBAN DE89-held from lookalike domain"
+    message: "BEC: supplier payment rewrite to IBAN DE89-held from lookalike domain"
+  evidence_field: raw.message
+  evidence_value: "supplier payment rewrite to IBAN DE89-held"
+  evidence_why: "Payment diversion phrasing."
+  summary: "BEC supplier rewrite."
+
+- id: heldout-fp-m365-transport
+  product_surface: email
+  technique: {id: T1114.003, name: Email Forwarding Rule, tactic: Collection, confidence: 0.15}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 8]
+  event:
+    timestamp: "2025-04-03T11:00:00Z"
+    source: other
+    host: m365-held
+    user: transport@example.com
+    raw:
+      message: "Exchange transport rule Journal-to-Compliance for regulatory archive — expected"
+    message: "Exchange transport rule Journal-to-Compliance for regulatory archive — expected"
+  evidence_field: raw.message
+  evidence_value: "Journal-to-Compliance for regulatory archive"
+  evidence_why: "Known compliance journaling."
+  summary: "Compliance journal rule — FP."
+
+- id: heldout-btp-m365-migration
+  product_surface: email
+  technique: {id: T1114.002, name: Remote Email Collection, tactic: Collection, confidence: 0.25}
+  disposition: benign_true_positive
+  category: collection
+  severity: [low, 16]
+  event:
+    timestamp: "2025-04-03T12:00:00Z"
+    source: other
+    host: m365-held
+    user: migsvc@example.com
+    raw:
+      ticket: "CHG-held-3300"
+      message: "Mailbox export migsvc covered by CHG-held-3300 tenant migration"
+    message: "Mailbox export migsvc covered by CHG-held-3300 tenant migration"
+  evidence_field: raw.message
+  evidence_value: "covered by CHG-held-3300"
+  evidence_why: "Approved migration window."
+  summary: "Mailbox migration export — BTP."
+
+# Kubernetes
+- id: heldout-k8s-priv-pod
+  product_surface: k8s
+  technique: {id: T1610, name: Deploy Container, tactic: Defense Evasion, confidence: 0.85}
+  disposition: true_positive
+  category: defense_evasion
+  severity: [high, 84]
+  event:
+    timestamp: "2025-04-04T04:00:00Z"
+    source: other
+    host: k8s-held-ctrl
+    user: system:serviceaccount:default:attacker
+    raw:
+      message: "Pod evil-debug created privileged=true hostNetwork=true in kube-system"
+    message: "Pod evil-debug created privileged=true hostNetwork=true in kube-system"
+  evidence_field: raw.message
+  evidence_value: "privileged=true hostNetwork=true in kube-system"
+  evidence_why: "Privileged pod in control plane ns."
+  summary: "Privileged kube-system pod — TP."
+
+- id: heldout-k8s-cron-crypto
+  product_surface: k8s
+  technique: {id: T1053.007, name: Container Orchestration Job, tactic: Persistence, confidence: 0.86}
+  disposition: true_positive
+  category: persistence
+  severity: [high, 82]
+  event:
+    timestamp: "2025-04-04T05:00:00Z"
+    source: other
+    host: k8s-held-ctrl
+    user: system:anonymous
+    raw:
+      message: "CronJob xmrig-held created in namespace default by anonymous"
+    message: "CronJob xmrig-held created in namespace default by anonymous"
+  evidence_field: raw.message
+  evidence_value: "CronJob xmrig-held"
+  evidence_why: "Anon-created miner CronJob."
+  summary: "Anonymous xmrig CronJob — TP."
+
+- id: heldout-btp-k8s-gitops
+  product_surface: k8s
+  technique: {id: T1053.007, name: Container Orchestration Job, tactic: Persistence, confidence: 0.28}
+  disposition: benign_true_positive
+  category: persistence
+  severity: [low, 17]
+  event:
+    timestamp: "2025-04-04T06:00:00Z"
+    source: other
+    host: k8s-held-ctrl
+    user: system:serviceaccount:argocd:argocd-application-controller
+    raw:
+      message: "ArgoCD sync Application payments-api — expected gitops"
+    message: "ArgoCD sync Application payments-api — expected gitops"
+  evidence_field: raw.message
+  evidence_value: "ArgoCD sync Application payments-api"
+  evidence_why: "Known gitops controller."
+  summary: "ArgoCD sync — BTP."
+
+- id: heldout-nmd-k8s-get-secrets
+  product_surface: k8s
+  technique: {id: T1552.007, name: Container API, tactic: Credential Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: credential_access
+  severity: [medium, 40]
+  event:
+    timestamp: "2025-04-04T07:00:00Z"
+    source: other
+    host: k8s-held-ctrl
+    user: system:serviceaccount:dev:ci
+    raw:
+      message: "ci serviceaccount get secrets once in namespace staging — no exec"
+    message: "ci serviceaccount get secrets once in namespace staging — no exec"
+  evidence_field: raw.message
+  evidence_value: "get secrets once in namespace staging — no exec"
+  evidence_why: "May be deploy tooling."
+  summary: "Single secrets get; needs more data."
+
+- id: heldout-k8s-window-escape
+  product_surface: k8s
+  technique: {id: T1611, name: Escape to Host, tactic: Privilege Escalation, confidence: 0.88}
+  disposition: true_positive
+  category: privilege_escalation
+  severity: [critical, 93]
+  events:
+    - timestamp: "2025-04-04T08:00:00Z"
+      source: other
+      host: k8s-held-node-3
+      user: root
+      raw:
+        message: "container held-escape mounted hostPath /"
+      message: "container held-escape mounted hostPath /"
+    - timestamp: "2025-04-04T08:01:00Z"
+      source: other
+      host: k8s-held-node-3
+      user: root
+      raw:
+        message: "chroot to host and wrote /etc/cron.d/held-persist"
+      message: "chroot to host and wrote /etc/cron.d/held-persist"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "mounted hostPath /", why: "Host mount"}
+    - {telemetry_index: 1, field: raw.message, value: "wrote /etc/cron.d/held-persist", why: "Host persistence"}
+  summary: "hostPath mount then host cron — TP."
+
+# SaaS
+- id: heldout-github-pat-push
+  product_surface: saas
+  technique: {id: T1552.001, name: Credentials In Files, tactic: Credential Access, confidence: 0.84}
+  disposition: true_positive
+  category: credential_access
+  severity: [high, 80]
+  event:
+    timestamp: "2025-04-05T09:00:00Z"
+    source: other
+    host: github-held
+    user: contractor-held
+    raw:
+      message: "GitHub push of .env containing ghp_heldtoken to public repo held-leak"
+    message: "GitHub push of .env containing ghp_heldtoken to public repo held-leak"
+  evidence_field: raw.message
+  evidence_value: "ghp_heldtoken to public repo held-leak"
+  evidence_why: "PAT in public repo."
+  summary: "Leaked GitHub PAT push — TP."
+
+- id: heldout-salesforce-export
+  product_surface: saas
+  technique: {id: T1530, name: Data from Cloud Storage, tactic: Collection, confidence: 0.82}
+  disposition: true_positive
+  category: collection
+  severity: [high, 81]
+  event:
+    timestamp: "2025-04-05T10:00:00Z"
+    source: other
+    host: sfdc-held
+    user: salesops.held@example.com
+    raw:
+      message: "Salesforce bulk Data Export of Accounts+Contacts to personal Dropbox link"
+    message: "Salesforce bulk Data Export of Accounts+Contacts to personal Dropbox link"
+  evidence_field: raw.message
+  evidence_value: "personal Dropbox link"
+  evidence_why: "CRM export to personal cloud."
+  summary: "SFDC export to Dropbox — TP."
+
+- id: heldout-fp-slack-export
+  product_surface: saas
+  technique: {id: T1530, name: Data from Cloud Storage, tactic: Collection, confidence: 0.15}
+  disposition: false_positive
+  category: collection
+  severity: [informational, 9]
+  event:
+    timestamp: "2025-04-05T11:00:00Z"
+    source: other
+    host: slack-held
+    user: compliance@example.com
+    raw:
+      message: "Slack Enterprise Grid eDiscovery export for LEGAL-held-441 — expected"
+    message: "Slack Enterprise Grid eDiscovery export for LEGAL-held-441 — expected"
+  evidence_field: raw.message
+  evidence_value: "eDiscovery export for LEGAL-held-441"
+  evidence_why: "Legal hold export."
+  summary: "Slack eDiscovery — FP."
+
+- id: heldout-btp-jira-automation
+  product_surface: saas
+  technique: {id: T1059, name: Command and Scripting Interpreter, tactic: Execution, confidence: 0.25}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 14]
+  event:
+    timestamp: "2025-04-05T12:00:00Z"
+    source: other
+    host: jira-held
+    user: automation@example.com
+    raw:
+      message: "Jira Automation rule sync-oncall posted to PagerDuty — expected"
+    message: "Jira Automation rule sync-oncall posted to PagerDuty — expected"
+  evidence_field: raw.message
+  evidence_value: "sync-oncall posted to PagerDuty — expected"
+  evidence_why: "Known on-call automation."
+  summary: "Jira→PagerDuty automation — BTP."
+
+# Endpoint extras
+- id: heldout-fp-crowdstrike-channel
+  product_surface: endpoint
+  technique: {id: T1105, name: Ingress Tool Transfer, tactic: Command and Control, confidence: 0.12}
+  disposition: false_positive
+  category: command_and_control
+  severity: [informational, 7]
+  event:
+    timestamp: "2025-04-06T06:00:00Z"
+    source: sysmon
+    host: wkstn-held-44
+    user: SYSTEM
+    raw:
+      message: "CrowdStrike sensor self-update from ts01-b.cloudsink.net — vendor CDN"
+    message: "CrowdStrike sensor self-update from ts01-b.cloudsink.net — vendor CDN"
+  evidence_field: raw.message
+  evidence_value: "CrowdStrike sensor self-update"
+  evidence_why: "EDR update channel."
+  summary: "CS sensor update — FP."
+
+- id: heldout-btp-intune-remediation
+  product_surface: endpoint
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.28}
+  disposition: benign_true_positive
+  category: execution
+  severity: [low, 16]
+  event:
+    timestamp: "2025-04-06T07:00:00Z"
+    source: sysmon
+    host: wkstn-held-45
+    user: SYSTEM
+    raw:
+      ParentImage: "C:\\Program Files (x86)\\Microsoft Intune Management Extension\\Microsoft.Management.Services.IntuneWindowsAgent.exe"
+      message: "IntuneWindowsAgent ran BitLocker-Remediate.ps1"
+    message: "IntuneWindowsAgent ran BitLocker-Remediate.ps1"
+  evidence_field: raw.ParentImage
+  evidence_value: "IntuneWindowsAgent.exe"
+  evidence_why: "MDM remediation parent."
+  summary: "Intune BitLocker script — BTP."
+
+- id: heldout-nmd-whoami-once
+  product_surface: endpoint
+  technique: {id: T1033, name: System Owner/User Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 15]
+  event:
+    timestamp: "2025-04-06T08:00:00Z"
+    source: sysmon
+    host: wkstn-held-46
+    user: jheld
+    raw:
+      message: "whoami.exe /all once — no follow-on discovery"
+    message: "whoami.exe /all once — no follow-on discovery"
+  evidence_field: raw.message
+  evidence_value: "whoami.exe /all once — no follow-on discovery"
+  evidence_why: "Isolated discovery."
+  summary: "Single whoami; needs more data."
+
+- id: heldout-endpoint-window-ransom
+  product_surface: endpoint
+  technique: {id: T1486, name: Data Encrypted for Impact, tactic: Impact, confidence: 0.92}
+  disposition: true_positive
+  category: impact
+  severity: [critical, 97]
+  events:
+    - timestamp: "2025-04-06T22:00:00Z"
+      source: sysmon
+      host: filesrv-held-9
+      user: CORP\\sql.svc
+      raw:
+        message: "vssadmin.exe delete shadows /all /quiet"
+      message: "vssadmin.exe delete shadows /all /quiet"
+    - timestamp: "2025-04-06T22:02:00Z"
+      source: sysmon
+      host: filesrv-held-9
+      user: CORP\\sql.svc
+      raw:
+        message: "mass file rename to .heldlock across D:\\Shares"
+      message: "mass file rename to .heldlock across D:\\Shares"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "vssadmin.exe delete shadows /all /quiet", why: "Shadow copy wipe"}
+    - {telemetry_index: 1, field: raw.message, value: "mass file rename to .heldlock", why: "Ransom extension"}
+  summary: "Shadow delete then mass encrypt — TP."

@@ -842,3 +842,159 @@
   evidence_value: "DCSync-like replication rights used by CORP\\svc_sql"
   evidence_why: "Non-DC account performing replication."
   summary: "DCSync from sql service account — true positive."
+
+# ========== multi-event windows (disposition cues across timeline) ==========
+- id: disp-btp-window-sccm-reboot
+  product_surface: endpoint
+  technique: {id: T1529, name: System Shutdown/Reboot, tactic: Impact, confidence: 0.25}
+  disposition: benign_true_positive
+  category: impact
+  severity: [low, 15]
+  events:
+    - timestamp: "2024-12-05T02:00:00Z"
+      source: sysmon
+      host: wkstn-disp-me-1
+      user: SYSTEM
+      raw:
+        message: "SCCM CcmExec maintenance window start CHG-99100"
+      message: "SCCM CcmExec maintenance window start CHG-99100"
+    - timestamp: "2024-12-05T02:05:00Z"
+      source: sysmon
+      host: wkstn-disp-me-1
+      user: SYSTEM
+      raw:
+        message: "shutdown.exe /r /t 0 initiated by CcmExec"
+      message: "shutdown.exe /r /t 0 initiated by CcmExec"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "maintenance window start CHG-99100", why: "Approved SCCM window"}
+    - {telemetry_index: 1, field: raw.message, value: "initiated by CcmExec", why: "Reboot parent is SCCM agent"}
+  summary: "SCCM maintenance reboot window — benign true positive."
+
+- id: disp-fp-window-defender-chain
+  product_surface: endpoint
+  technique: {id: T1059.001, name: PowerShell, tactic: Execution, confidence: 0.12}
+  disposition: false_positive
+  category: execution
+  severity: [informational, 8]
+  events:
+    - timestamp: "2024-12-05T06:00:00Z"
+      source: sysmon
+      host: wkstn-disp-me-2
+      user: SYSTEM
+      raw:
+        ParentImage: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+        message: "MpCmdRun Start-MpScan"
+      message: "MpCmdRun Start-MpScan"
+    - timestamp: "2024-12-05T06:01:00Z"
+      source: sysmon
+      host: wkstn-disp-me-2
+      user: SYSTEM
+      raw:
+        CommandLine: "powershell.exe -NoProfile -Command Get-MpComputerStatus"
+        message: "Get-MpComputerStatus after MpCmdRun"
+      message: "Get-MpComputerStatus after MpCmdRun"
+  evidence:
+    - {telemetry_index: 0, field: raw.ParentImage, value: "C:\\Program Files\\Windows Defender\\MpCmdRun.exe", why: "Defender launcher"}
+  summary: "Defender scan → status query chain — false positive."
+
+- id: disp-nmd-window-okta-partial
+  product_surface: idp
+  technique: {id: T1078.004, name: Cloud Accounts, tactic: Initial Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: initial_access
+  severity: [medium, 40]
+  events:
+    - timestamp: "2024-12-05T08:00:00Z"
+      source: okta
+      host: okta-disp
+      user: travel.disp@contoso-disp.io
+      raw:
+        message: "Okta MFA success travel.disp from Lisbon first-seen city"
+      message: "Okta MFA success travel.disp from Lisbon first-seen city"
+    - timestamp: "2024-12-05T08:02:00Z"
+      source: okta
+      host: okta-disp
+      user: travel.disp@contoso-disp.io
+      raw:
+        message: "App SSO to Salesforce — no Device Trust signal yet"
+      message: "App SSO to Salesforce — no Device Trust signal yet"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "Lisbon first-seen city", why: "Geo anomaly incomplete"}
+    - {telemetry_index: 1, field: raw.message, value: "no Device Trust signal yet", why: "Missing posture"}
+  summary: "Travel Okta + SSO without Device Trust — needs more data."
+
+- id: disp-tp-window-latmove
+  product_surface: endpoint
+  technique: {id: T1021.002, name: SMB/Windows Admin Shares, tactic: Lateral Movement, confidence: 0.88}
+  disposition: true_positive
+  category: lateral_movement
+  severity: [high, 85]
+  events:
+    - timestamp: "2024-12-05T11:00:00Z"
+      source: windows_security
+      host: dc-disp-me
+      user: CORP\\svc_backup
+      raw:
+        message: "ADMIN$ access from 10.9.9.77 — no CHG"
+      message: "ADMIN$ access from 10.9.9.77 — no CHG"
+    - timestamp: "2024-12-05T11:01:00Z"
+      source: sysmon
+      host: filesrv-disp-me
+      user: SYSTEM
+      raw:
+        message: "service install BTOBTO after ADMIN$ — Impacket-like"
+      message: "service install BTOBTO after ADMIN$ — Impacket-like"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "ADMIN$ access from 10.9.9.77 — no CHG", why: "Unauthorized admin share"}
+    - {telemetry_index: 1, field: raw.message, value: "service install BTOBTO", why: "Classic smbexec follow-on"}
+  summary: "ADMIN$ then service install — true positive lateral movement."
+
+- id: disp-btp-window-k8s-backup
+  product_surface: k8s
+  technique: {id: T1053.007, name: Container Orchestration Job, tactic: Persistence, confidence: 0.28}
+  disposition: benign_true_positive
+  category: persistence
+  severity: [low, 18]
+  events:
+    - timestamp: "2024-12-05T03:00:00Z"
+      source: other
+      host: k8s-disp-me
+      user: system:serviceaccount:ops:backup
+      raw:
+        message: "CronJob ops/pg-backup scheduled tick"
+      message: "CronJob ops/pg-backup scheduled tick"
+    - timestamp: "2024-12-05T03:01:00Z"
+      source: other
+      host: k8s-disp-me
+      user: system:serviceaccount:ops:backup
+      raw:
+        message: "Job pg-backup-2845001 pods Running in namespace ops"
+      message: "Job pg-backup-2845001 pods Running in namespace ops"
+  evidence:
+    - {telemetry_index: 0, field: raw.message, value: "CronJob ops/pg-backup", why: "Known backup CronJob"}
+  summary: "K8s backup CronJob window — benign true positive."
+
+- id: disp-nmd-window-aws-list
+  product_surface: cloud_audit
+  technique: {id: T1087.004, name: Cloud Account, tactic: Discovery, confidence: 0.4}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 28]
+  events:
+    - timestamp: "2024-12-05T14:00:00Z"
+      source: cloudtrail
+      host: aws-disp-me
+      user: arn:aws:iam::218900:user/contractor.disp
+      raw:
+        message: "contractor.disp ListUsers"
+      message: "contractor.disp ListUsers"
+    - timestamp: "2024-12-05T14:01:00Z"
+      source: cloudtrail
+      host: aws-disp-me
+      user: arn:aws:iam::218900:user/contractor.disp
+      raw:
+        message: "contractor.disp ListRoles — no Create* follow-on"
+      message: "contractor.disp ListRoles — no Create* follow-on"
+  evidence:
+    - {telemetry_index: 1, field: raw.message, value: "ListRoles — no Create* follow-on", why: "Discovery without mutation"}
+  summary: "IAM list-only window — needs more data."

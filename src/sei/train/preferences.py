@@ -71,11 +71,79 @@ def reject_action_laundry_list(gold: str | dict[str, Any]) -> str:
     return _dumps(obj)
 
 
+_DISP_FLIP = {
+    "true_positive": "false_positive",
+    "false_positive": "true_positive",
+    "benign_true_positive": "true_positive",
+    "needs_more_data": "true_positive",
+}
+
+
+def reject_wrong_disposition(gold: str | dict[str, Any]) -> str:
+    """Flip disposition toward the common collapse (always true_positive / TP↔FP)."""
+    obj = _loads(gold)
+    cur = obj.get("incident", {}).get("disposition", "true_positive")
+    nxt = _DISP_FLIP.get(cur, "true_positive")
+    obj.setdefault("incident", {})["disposition"] = nxt
+    obj["incident"]["summary"] = f"Mis-triaged as {nxt} without supporting analysis."
+    obj["confidence"] = 0.95
+    if nxt == "true_positive":
+        obj["recommended_actions"] = [
+            {
+                "priority": 1,
+                "type": "contain",
+                "action": "Isolate host immediately",
+                "d3fend_id": "D3-ISOL",
+            }
+        ]
+    return _dumps(obj)
+
+
+def reject_always_true_positive(gold: str | dict[str, Any]) -> str:
+    """Force true_positive even when gold is BTP/FP/NMD — mirrors held-out failure mode."""
+    obj = _loads(gold)
+    obj.setdefault("incident", {})["disposition"] = "true_positive"
+    obj["incident"]["summary"] = "Assumed true positive without validating benign/noise cues."
+    obj["confidence"] = 0.99
+    obj["severity"] = {
+        "level": "high",
+        "score": 80,
+        "rationale": "Defaulted to high severity true positive.",
+    }
+    return _dumps(obj)
+
+
+def reject_strip_evidence(gold: str | dict[str, Any]) -> str:
+    """Empty evidence despite stage-4 requirement for grounded spans."""
+    obj = _loads(gold)
+    obj["evidence"] = []
+    obj["confidence"] = max(float(obj.get("confidence", 0.5)), 0.9)
+    return _dumps(obj)
+
+
+def reject_wrong_evidence_index(gold: str | dict[str, Any]) -> str:
+    """Point evidence at a non-existent telemetry_index / wrong field."""
+    obj = _loads(gold)
+    obj["evidence"] = [
+        {
+            "telemetry_index": 99,
+            "field": "raw.CommandLine",
+            "value": "THIS_STRING_IS_NOT_IN_TELEMETRY_xyz",
+            "why": "Wrong window index and fabricated quote",
+        }
+    ]
+    return _dumps(obj)
+
+
 RECIPE_BUILDERS = {
     "over_severity": reject_over_severity,
     "bad_technique": reject_bad_technique,
     "ungrounded_evidence": reject_ungrounded_evidence,
     "action_laundry_list": reject_action_laundry_list,
+    "wrong_disposition": reject_wrong_disposition,
+    "always_true_positive": reject_always_true_positive,
+    "strip_evidence": reject_strip_evidence,
+    "wrong_evidence_index": reject_wrong_evidence_index,
 }
 
 

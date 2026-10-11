@@ -16,6 +16,39 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SCENARIOS = REPO_ROOT / "data" / "otrf" / "scenarios.yaml"
 
 
+def scenario_events(sc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Accept `events:` list or legacy singular `event:`."""
+    if sc.get("events"):
+        return list(sc["events"])
+    if "event" in sc:
+        return [sc["event"]]
+    raise KeyError(f"scenario {sc.get('id')!r} missing event/events")
+
+
+def scenario_evidence(sc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Accept `evidence:` list or legacy evidence_field/value/why (+ optional evidence_index)."""
+    if sc.get("evidence") and isinstance(sc["evidence"], list):
+        out = []
+        for ev in sc["evidence"]:
+            out.append(
+                {
+                    "telemetry_index": int(ev.get("telemetry_index", 0)),
+                    "field": ev["field"],
+                    "value": ev["value"],
+                    "why": ev.get("why", ""),
+                }
+            )
+        return out
+    return [
+        {
+            "telemetry_index": int(sc.get("evidence_index", 0)),
+            "field": sc["evidence_field"],
+            "value": sc["evidence_value"],
+            "why": sc["evidence_why"],
+        }
+    ]
+
+
 def _scenario_to_example(
     sc: dict[str, Any],
     *,
@@ -28,6 +61,7 @@ def _scenario_to_example(
     tech["name"] = tech_in.get("name") or tech["name"]
     tech["tactic"] = tech_in.get("tactic") or tech["tactic"]
     level, score = sc["severity"]
+    events = scenario_events(sc)
     output = {
         "incident": {
             "disposition": sc["disposition"],
@@ -41,14 +75,7 @@ def _scenario_to_example(
             "rationale": f"OTRF-style scenario severity for {tid}",
         },
         "confidence": float(tech_in.get("confidence", 0.8)),
-        "evidence": [
-            {
-                "telemetry_index": 0,
-                "field": sc["evidence_field"],
-                "value": sc["evidence_value"],
-                "why": sc["evidence_why"],
-            }
-        ],
+        "evidence": scenario_evidence(sc),
         "recommended_actions": default_actions(tid)[:5]
         or [
             {
@@ -91,13 +118,15 @@ def _scenario_to_example(
         "license": "Apache-2.0",
         "synthetic": True,
         "split_group": sc["id"],
+        "window_size": len(events),
+        "product_surface": sc.get("product_surface", "unknown"),
     }
     if sealed_held_out:
         meta[HELD_OUT_META_FLAG] = True
         meta["split"] = "held_out_never_train"
     return build_example(
         example_id=f"{sc['id']}-s{stage}",
-        events=[sc["event"]],
+        events=events,
         output=output,
         context={"asset_criticality": "high", "environment": "prod"},
         meta=meta,

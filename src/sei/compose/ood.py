@@ -25,10 +25,18 @@ _USER_VARIANTS = ("alice.ood", "bob.ood", "svc_ood", "contractor_ood", "admin_oo
 def _variant(sc: dict[str, Any], *, host: str, user: str, idx: int) -> dict[str, Any]:
     out = copy.deepcopy(sc)
     out["id"] = f"{sc['id']}-v{idx}"
-    ev = out.setdefault("event", {})
-    ev["host"] = host
-    if "user" in ev or user:
-        ev["user"] = user
+    # Apply host/user to singular event and/or multi-event windows
+    if "event" in out and isinstance(out["event"], dict):
+        out["event"]["host"] = host
+        if "user" in out["event"] or user:
+            out["event"]["user"] = user
+    if "events" in out and isinstance(out["events"], list):
+        for ev in out["events"]:
+            if not isinstance(ev, dict):
+                continue
+            ev["host"] = host
+            if "user" in ev or user:
+                ev["user"] = user
     # keep evidence_value grounded: do not rewrite evidence strings unless present in message/raw
     return out
 

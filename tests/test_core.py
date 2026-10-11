@@ -7,7 +7,12 @@ import json
 from sei.compose.synthetic import iter_seed_examples, scenario_to_example, SCENARIOS
 from sei.eval_metrics import evaluate_paired
 from sei.rag.attack_rag import retrieve
-from sei.train.preferences import reject_bad_technique, reject_over_severity
+from sei.train.preferences import (
+    reject_always_true_positive,
+    reject_bad_technique,
+    reject_over_severity,
+    reject_wrong_disposition,
+)
 from sei.verify.validator import verify_example
 
 
@@ -46,6 +51,21 @@ def test_reject_bad_technique_id():
     ex = scenario_to_example(SCENARIOS[0], stage=4)
     bad = json.loads(reject_bad_technique(ex["messages"][2]["content"]))
     assert bad["techniques"][0]["id"] == "T9999.999"
+
+
+def test_reject_wrong_disposition_flips():
+    ex = scenario_to_example(SCENARIOS[0], stage=4)
+    gold = json.loads(ex["messages"][2]["content"])
+    bad = json.loads(reject_wrong_disposition(gold))
+    assert bad["incident"]["disposition"] != gold["incident"]["disposition"]
+
+
+def test_reject_always_true_positive():
+    # Pick a non-TP seed if present; otherwise force FP gold
+    gold = json.loads(scenario_to_example(SCENARIOS[0], stage=4)["messages"][2]["content"])
+    gold["incident"]["disposition"] = "false_positive"
+    bad = json.loads(reject_always_true_positive(gold))
+    assert bad["incident"]["disposition"] == "true_positive"
 
 
 def test_rag_retrieves_cmd():

@@ -33,12 +33,18 @@ Examples:
     --guide-s3 s3://bucket/GUIDE_Train.csv \\
     --guide-limit 3000 --guide-offset 100000 ...
 
-  # Disposition hard-negatives (resume ood adapter)
+  # GUIDE-heavy disposition + multi-event windows (resume ood adapter)
   python scripts/aws/launch.py --mode disposition --wait \\
     --resume-adapter-s3 s3://bucket/sei-adapter-ood/ \\
     --adapter-s3 s3://bucket/sei-adapter-disposition/ \\
     --guide-s3 s3://bucket/GUIDE_Train.csv \\
-    --guide-limit 15000 --guide-offset 120000 ...
+    --guide-per-class 8000 --guide-window-size 3 ...
+
+  # ORPO on disposition/evidence mistakes (resume disposition adapter)
+  python scripts/aws/launch.py --mode orpo --wait \\
+    --resume-adapter-s3 s3://bucket/sei-adapter-disposition/ \\
+    --adapter-s3 s3://bucket/sei-adapter-orpo/ \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv ...
 """
 
 from __future__ import annotations
@@ -61,6 +67,9 @@ def build_user_data(args: argparse.Namespace, entrypoint: str) -> str:
         "SEI_GUIDE_LIMIT": str(args.guide_limit),
         "SEI_GUIDE_OFFSET": str(args.guide_offset),
         "SEI_GUIDE_STAGE": str(args.guide_stage),
+        "SEI_GUIDE_PER_CLASS": str(args.guide_per_class) if args.guide_per_class is not None else "",
+        "SEI_GUIDE_WINDOW_SIZE": str(args.guide_window_size),
+        "SEI_GUIDE_SCAN_LIMIT": str(args.guide_scan_limit),
         "SEI_ATOMIC_LIMIT": str(args.atomic_limit),
         "SEI_SIGMA_LIMIT": str(args.sigma_limit),
         "SEI_CORPORA_S3": args.corpora_s3 or "",
@@ -84,13 +93,13 @@ sleep 5
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="SEI AWS GPU launch (smoke|full|stage1|stage2|attack|ood|disposition)"
+        description="SEI AWS GPU launch (smoke|…|disposition|orpo)"
     )
     parser.add_argument(
         "--mode",
-        choices=["smoke", "full", "stage1", "stage2", "attack", "ood", "disposition"],
+        choices=["smoke", "full", "stage1", "stage2", "attack", "ood", "disposition", "orpo"],
         default="smoke",
-        help="attack=Atomic+Sigma+OTRF; ood=SaaS/IdP; disposition=hard-neg BTP/FP/NMD",
+        help="disposition=GUIDE-heavy balanced; orpo=preference align disposition/evidence",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
@@ -116,6 +125,24 @@ def main() -> None:
     parser.add_argument("--guide-limit", type=int, default=None, help="Max GUIDE rows after offset")
     parser.add_argument("--guide-offset", type=int, default=None, help="Skip first N GUIDE rows")
     parser.add_argument("--guide-stage", type=int, default=None, help="GUIDE curriculum stage (1 or 2)")
+    parser.add_argument(
+        "--guide-per-class",
+        type=int,
+        default=None,
+        help="Stratified GUIDE: N examples per disposition (disposition/orpo modes)",
+    )
+    parser.add_argument(
+        "--guide-window-size",
+        type=int,
+        default=None,
+        help="GUIDE multi-alert window size by IncidentId (default 3 for disposition)",
+    )
+    parser.add_argument(
+        "--guide-scan-limit",
+        type=int,
+        default=250000,
+        help="Max GUIDE rows to scan for stratified sampling",
+    )
     parser.add_argument("--atomic-limit", type=int, default=None, help="Max Atomic examples (attack/ood)")
     parser.add_argument("--sigma-limit", type=int, default=None, help="Max Sigma examples (attack mode)")
     parser.add_argument(
@@ -132,10 +159,11 @@ def main() -> None:
     # stage2 trains techniques on up to 50k rows from the start at stage=2.
     # attack: optional small GUIDE mix; Atomic/Sigma downloaded on box.
     # ood: train-safe SaaS/IdP scenarios + light Atomic/OTRF; resume attack adapter.
-    # disposition: hard-neg BTP/FP/NMD + GUIDE with TP cap; resume ood adapter.
+    # disposition: GUIDE-heavy stratified + hard-neg YAML; resume ood adapter.
+    # orpo: preference align on disposition train mix; resume disposition adapter.
     if args.guide_limit is None:
-        if args.mode == "disposition":
-            args.guide_limit = 15000
+        if args.mode in {"disposition", "orpo"}:
+            args.guide_limit = 32000
         elif args.mode == "ood":
             args.guide_limit = 3000
         elif args.mode == "attack":
@@ -147,19 +175,23 @@ def main() -> None:
     if args.guide_offset is None:
         if args.mode == "stage1":
             args.guide_offset = 20000
-        elif args.mode == "disposition":
-            args.guide_offset = 120000
         elif args.mode == "ood":
             args.guide_offset = 100000
         else:
             args.guide_offset = 0
     if args.guide_stage is None:
-        if args.mode in {"ood", "disposition"}:
+        if args.mode in {"ood", "disposition", "orpo"}:
             args.guide_stage = 4
         elif args.mode in {"stage2", "attack"}:
             args.guide_stage = 2
         else:
             args.guide_stage = 1
+    if args.guide_per_class is None and args.mode == "disposition":
+        args.guide_per_class = 8000
+    if args.guide_per_class is None and args.mode == "orpo":
+        args.guide_per_class = 2000
+    if args.guide_window_size is None:
+        args.guide_window_size = 3 if args.mode in {"disposition", "orpo"} else 1
     if args.atomic_limit is None:
         args.atomic_limit = 2000 if args.mode == "ood" else 8000
     if args.sigma_limit is None:
@@ -167,8 +199,13 @@ def main() -> None:
 
     if args.mode in {"full", "stage1", "stage2"} and not args.guide_s3 and not args.dry_run:
         parser.error("--guide-s3 is required for --mode full|stage1|stage2")
-    if args.mode in {"stage2", "attack", "ood", "disposition"} and not args.resume_adapter_s3 and not args.dry_run:
-        parser.error("--resume-adapter-s3 is required for --mode stage2|attack|ood|disposition")
+    if args.mode == "disposition" and not args.guide_s3 and not args.dry_run:
+        print(
+            "WARNING: --guide-s3 unset; disposition will train on hard-neg YAML only.",
+            file=sys.stderr,
+        )
+    if args.mode in {"stage2", "attack", "ood", "disposition", "orpo"} and not args.resume_adapter_s3 and not args.dry_run:
+        parser.error("--resume-adapter-s3 is required for --mode stage2|attack|ood|disposition|orpo")
     if args.mode == "stage1" and not args.resume_adapter_s3 and not args.dry_run:
         print(
             "WARNING: --resume-adapter-s3 unset; stage1 will train a fresh adapter "
@@ -186,6 +223,7 @@ def main() -> None:
     print(f"guide_s3={args.guide_s3 or '-'}")
     print(
         f"guide_stage={args.guide_stage} offset={args.guide_offset} limit={args.guide_limit} "
+        f"per_class={args.guide_per_class or '-'} window={args.guide_window_size} "
         f"shard_size={args.shard_size}"
     )
     print(f"resume_adapter_s3={args.resume_adapter_s3 or '-'}")
@@ -299,6 +337,7 @@ def main() -> None:
             "attack": "sei-logs/ATTACK_OK",
             "ood": "sei-logs/OOD_OK",
             "disposition": "sei-logs/DISPOSITION_OK",
+            "orpo": "sei-logs/ORPO_OK",
         }
         key = markers.get(args.mode)
         if key:

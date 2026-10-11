@@ -1,3 +1,4 @@
+# GUIDE-heavy balanced disposition SFT (hard-neg YAML + stratified GUIDE).
 stage: 5
 base_model: fdtn-ai/Foundation-Sec-8B
 train_file: data/processed/disposition/train.jsonl
@@ -12,8 +13,8 @@ batch_size: 2
 grad_accum: 8
 lr: 2.0e-5
 warmup_ratio: 0.05
-max_length: 1024
+max_length: 1536
 logging_steps: 10
-eval_steps: 100
-save_steps: 100
+eval_steps: 200
+save_steps: 200
 dry_run: false

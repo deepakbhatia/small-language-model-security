@@ -6,13 +6,21 @@
 #   - Do not copy these scenarios into data/otrf/, synthetic SCENARIOS, or GUIDE mixes.
 #   - eval.jsonl is the frozen artifact; regenerate only via scripts/freeze_held_out_eval.py
 #
-name: sei-blind-held-out-v1
+name: sei-blind-held-out-v2
 policy: never_train
 split: held_out_never_train
 meta_flag: blind_held_out
 scenarios: scenarios.yaml
 frozen_eval: eval.jsonl
 attack_version: "16.1"
+product_surfaces:
+  - idp
+  - cloud_audit
+  - email
+  - k8s
+  - saas
+  - endpoint
 notes: >
-  Hand-authored only (no Atomic/Sigma/GUIDE rows). Designed for out-of-distribution
-  SOC products: IdP, cloud audit, email, K8s, SaaS, and mixed dispositions.
+  Hand-authored only (no Atomic/Sigma/GUIDE rows). Expanded v2 covers IdP, cloud audit,
+  email/M365, Kubernetes, SaaS, and endpoint — including multi-event windows and a
+  stronger mix of BTP / FP / needs_more_data. Still never used for training.

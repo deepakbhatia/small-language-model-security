@@ -172,9 +172,9 @@ python scripts/compose_all.py --out data/processed/ood --no-seed \
   --otrf data/otrf/scenarios.yaml --attack-stages 3,4 --val-ratio 0.15
 ```
 
-## Disposition train (hard negatives — BTP / FP / needs_more_data)
+## Disposition train (GUIDE-heavy balanced + hard negatives + multi-event)
 
-Resumes from the **ood** adapter. Uses `data/disposition/train_scenarios.yaml` (never held_out), optional GUIDE stage‑4 slice, and `--max-tp-frac 0.35` so true_positive cannot dominate.
+Resumes from the **ood** adapter. Stratified GUIDE (`--guide-per-class`, multi-alert `--guide-window-size`) plus `data/disposition/train_scenarios.yaml` (never held_out). Caps TP with `--max-tp-frac`.
 
 ```bash
 python scripts/aws/launch.py --mode disposition --wait \
@@ -188,16 +188,41 @@ python scripts/aws/launch.py --mode disposition --wait \
   --resume-adapter-s3 s3://my-sei-bucket/sei-adapter-ood/ \
   --adapter-s3 s3://my-sei-bucket/sei-adapter-disposition/ \
   --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
-  --guide-limit 15000 \
-  --guide-offset 120000
+  --guide-per-class 8000 \
+  --guide-window-size 3 \
+  --guide-scan-limit 250000
 ```
 
-Success marker: `sei-logs/DISPOSITION_OK`. Local compose smoke:
+Success marker: `sei-logs/DISPOSITION_OK`.
+
+## ORPO (disposition / evidence mistakes)
+
+Resumes from the **disposition** adapter. Preference recipes include `wrong_disposition`, `always_true_positive`, `strip_evidence`, `wrong_evidence_index`, plus technique/severity/action rejects.
+
+```bash
+python scripts/aws/launch.py --mode orpo --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter-disposition/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter-orpo/ \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --guide-per-class 2000 \
+  --guide-window-size 3
+```
+
+Success marker: `sei-logs/ORPO_OK`.
+
+Local compose smoke (hard-neg only):
 
 ```bash
 python scripts/compose_all.py --out data/processed/disposition --no-seed \
   --ood data/disposition/train_scenarios.yaml --ood-variants 6 \
-  --otrf - --attack-stages 4 --max-tp-frac 0.35 --val-ratio 0.15
+  --otrf - --attack-stages 4 --max-tp-frac 0.40 --val-ratio 0.15
 ```
 
 **Push `main` before launching** — the instance clones the repo for `compose_all` / `train_shards` (user-data only embeds `entrypoint.sh`).
@@ -205,12 +230,12 @@ python scripts/compose_all.py --out data/processed/disposition --no-seed \
 ## Sealed blind eval (never train)
 
 Hard held-out set lives in `data/blind/held_out/` (`MANIFEST.yaml`, `scenarios.yaml`, frozen `eval.jsonl`).
-Training code refuses these paths / `meta.blind_held_out=true`.
+v2 expands IdP / cloud_audit / email / k8s / saas / endpoint (incl. multi-event). Training code refuses these paths / `meta.blind_held_out=true`.
 
 ```bash
 python scripts/freeze_held_out_eval.py   # regenerate frozen JSONL only
 python scripts/eval_model.py \
-  --adapter checkpoints/sei-sft-disposition/adapter \
+  --adapter checkpoints/sei-orpo-disposition/adapter \
   --gold data/blind/held_out/eval.jsonl \
   --pred-dir eval/preds/held-out \
   --out eval/reports/held-out.json

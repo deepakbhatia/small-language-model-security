@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition
+#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition|orpo
+#   SEI_GUIDE_PER_CLASS=8000   # disposition: stratified GUIDE per disposition
+#   SEI_GUIDE_WINDOW_SIZE=3    # multi-alert windows by IncidentId
+#   SEI_GUIDE_SCAN_LIMIT=250000
 #   SEI_REPO_URL=...
 #   SEI_S3_BUCKET=...          # required for artifact sync
 #   SEI_GUIDE_S3=s3://bucket/GUIDE_Train.csv
@@ -35,6 +38,9 @@ CORPORA_S3="${SEI_CORPORA_S3:-}"
 GUIDE_LIMIT="${SEI_GUIDE_LIMIT:-20000}"
 GUIDE_OFFSET="${SEI_GUIDE_OFFSET:-0}"
 GUIDE_STAGE="${SEI_GUIDE_STAGE:-1}"
+GUIDE_PER_CLASS="${SEI_GUIDE_PER_CLASS:-}"
+GUIDE_WINDOW_SIZE="${SEI_GUIDE_WINDOW_SIZE:-1}"
+GUIDE_SCAN_LIMIT="${SEI_GUIDE_SCAN_LIMIT:-250000}"
 ATOMIC_LIMIT="${SEI_ATOMIC_LIMIT:-8000}"
 SIGMA_LIMIT="${SEI_SIGMA_LIMIT:-8000}"
 SHARD_SIZE="${SEI_SHARD_SIZE:-2000}"
@@ -392,7 +398,7 @@ elif [[ "$MODE" == "ood" ]]; then
   fi
 
 elif [[ "$MODE" == "disposition" ]]; then
-  echo "[sei] DISPOSITION training (hard negatives BTP/FP/NMD), resume OOD adapter"
+  echo "[sei] DISPOSITION training (GUIDE-heavy balanced + hard negatives + multi-event windows)"
   if [[ -z "$RESUME_ADAPTER_S3" ]]; then
     echo "[sei] ERROR: disposition mode requires SEI_RESUME_ADAPTER_S3 (sei-adapter-ood recommended)" >&2
     exit 3
@@ -407,13 +413,18 @@ elif [[ "$MODE" == "disposition" ]]; then
   GUIDE_ARGS=()
   if [[ -n "$GUIDE_S3" ]]; then
     aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
-    # Broader GUIDE slice for IncidentGrade diversity (FP/BTP), then cap TP
+    PER_CLASS="${GUIDE_PER_CLASS:-8000}"
+    WIN="${GUIDE_WINDOW_SIZE:-3}"
     GUIDE_ARGS=(
       --guide /tmp/GUIDE_Train.csv
-      --guide-limit "${GUIDE_LIMIT:-15000}"
-      --guide-offset "${GUIDE_OFFSET:-120000}"
+      --guide-per-class "$PER_CLASS"
+      --guide-scan-limit "${GUIDE_SCAN_LIMIT:-250000}"
+      --guide-offset "${GUIDE_OFFSET:-0}"
       --guide-stage 4
+      --guide-window-size "$WIN"
     )
+  else
+    echo "[sei] WARNING: no GUIDE_S3 — disposition will train on hard-neg YAML only" >&2
   fi
 
   mkdir -p data/processed/disposition
@@ -424,9 +435,9 @@ elif [[ "$MODE" == "disposition" ]]; then
     --ood-variants 6 \
     --otrf - \
     --attack-stages 4 \
-    --max-tp-frac 0.35 \
-    --val-ratio 0.15 \
-    --val-monitor-size 200 \
+    --max-tp-frac 0.40 \
+    --val-ratio 0.12 \
+    --val-monitor-size 300 \
     "${GUIDE_ARGS[@]}"
   python scripts/shard_jsonl.py \
     --input data/processed/disposition/train.jsonl \
@@ -444,19 +455,78 @@ elif [[ "$MODE" == "disposition" ]]; then
     --shards-dir data/processed/disposition/shards \
     --val-file data/processed/disposition/val.jsonl \
     --resume-adapter "$RESUME_DEST" \
-    --max-length 1024 \
+    --max-length 1536 \
     --batch-size 2 \
     --grad-accum 8 \
     --epochs 1 \
-    --eval-steps 100 \
+    --eval-steps 200 \
     --lr 2.0e-5 \
     "${ADAPTER_ARG[@]}"
   if [[ -n "$BUCKET" ]]; then
     echo "DISPOSITION_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/DISPOSITION_OK"
   fi
 
+elif [[ "$MODE" == "orpo" ]]; then
+  echo "[sei] ORPO alignment (disposition/evidence mistakes), resume disposition adapter"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: orpo mode requires SEI_RESUME_ADAPTER_S3 (sei-adapter-disposition recommended)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-sft-disposition/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  # Preference source: disposition train mix if present on box, else recompose from YAML
+  if [[ ! -f data/processed/disposition/train.jsonl ]]; then
+    echo "[sei] composing disposition preference source (YAML hard-neg; optional GUIDE)"
+    GUIDE_ARGS=()
+    if [[ -n "$GUIDE_S3" ]]; then
+      aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+      GUIDE_ARGS=(
+        --guide /tmp/GUIDE_Train.csv
+        --guide-per-class "${GUIDE_PER_CLASS:-2000}"
+        --guide-scan-limit "${GUIDE_SCAN_LIMIT:-100000}"
+        --guide-offset "${GUIDE_OFFSET:-0}"
+        --guide-stage 4
+        --guide-window-size "${GUIDE_WINDOW_SIZE:-3}"
+      )
+    fi
+    mkdir -p data/processed/disposition
+    python scripts/compose_all.py \
+      --out data/processed/disposition \
+      --no-seed \
+      --ood data/disposition/train_scenarios.yaml \
+      --ood-variants 4 \
+      --otrf - \
+      --attack-stages 4 \
+      --max-tp-frac 0.40 \
+      --val-ratio 0.1 \
+      --val-monitor-size 100 \
+      "${GUIDE_ARGS[@]}"
+  fi
+
+  # Point ORPO config at local resume + train file; write run config
+  python - <<'PY'
+import yaml
+from pathlib import Path
+cfg = yaml.safe_load(Path("configs/orpo_disposition.yaml").read_text())
+cfg["train_file"] = "data/processed/disposition/train.jsonl"
+cfg["resume_adapter"] = "checkpoints/sei-sft-disposition/adapter"
+cfg["output_dir"] = "checkpoints/sei-orpo-disposition"
+Path("configs/orpo_disposition_aws.yaml").write_text(yaml.safe_dump(cfg))
+print(cfg)
+PY
+  python scripts/train_orpo.py --config configs/orpo_disposition_aws.yaml
+
+  if [[ -n "$ADAPTER_S3" ]]; then
+    echo "[sei] syncing ORPO adapter → $ADAPTER_S3"
+    aws s3 sync checkpoints/sei-orpo-disposition/adapter/ "$ADAPTER_S3"
+  fi
+  if [[ -n "$BUCKET" ]]; then
+    echo "ORPO_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ORPO_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition|orpo)" >&2
   exit 2
 fi
 

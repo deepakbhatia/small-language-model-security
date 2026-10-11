@@ -40,7 +40,12 @@ def main(argv: list[str] | None = None) -> None:
 
     cfg = yaml.safe_load(args.config.read_text())
     recipes = cfg.get("recipes", list(RECIPE_BUILDERS.keys()))
-    rows = load_jsonl(Path(cfg["train_file"]))
+    train_path = Path(cfg["train_file"])
+    from sei.blind_guard import assert_dataset_not_held_out, assert_not_held_out_path
+
+    assert_not_held_out_path(train_path, role="orpo train_file")
+    rows = load_jsonl(train_path)
+    assert_dataset_not_held_out(rows, role="orpo train_file")
     prefs = expand_preferences(rows, recipes)
     print(f"[orpo] preference pairs={len(prefs)} recipes={recipes}")
 
