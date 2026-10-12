@@ -998,3 +998,162 @@
   evidence:
     - {telemetry_index: 1, field: raw.message, value: "ListRoles — no Create* follow-on", why: "Discovery without mutation"}
   summary: "IAM list-only window — needs more data."
+
+# ========== extra needs_more_data (ambiguous / incomplete) ==========
+- id: disp-nmd-single-powershell-getservice
+  product_surface: endpoint
+  technique: {id: T1007, name: System Service Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 16]
+  event:
+    timestamp: "2024-12-06T01:00:00Z"
+    source: sysmon
+    host: wkstn-disp-nmd-1
+    user: achan
+    raw:
+      message: "powershell Get-Service once — no follow-on"
+    message: "powershell Get-Service once — no follow-on"
+  evidence_field: raw.message
+  evidence_value: "Get-Service once — no follow-on"
+  evidence_why: "Single discovery cmd without chain."
+  summary: "Lone Get-Service; needs more data."
+
+- id: disp-nmd-one-failed-ssh
+  product_surface: endpoint
+  technique: {id: T1110.001, name: Password Guessing, tactic: Credential Access, confidence: 0.3}
+  disposition: needs_more_data
+  category: credential_access
+  severity: [informational, 14]
+  event:
+    timestamp: "2024-12-06T02:00:00Z"
+    source: auth
+    host: ssh-disp-nmd
+    user: jsmith
+    raw:
+      message: "single SSH auth failure for jsmith from 198.51.100.9"
+    message: "single SSH auth failure for jsmith from 198.51.100.9"
+  evidence_field: raw.message
+  evidence_value: "single SSH auth failure"
+  evidence_why: "One failure is weak without volume."
+  summary: "Isolated SSH failure; needs more data."
+
+- id: disp-nmd-graph-directoryaudits-once
+  product_surface: idp
+  technique: {id: T1087.004, name: Cloud Account, tactic: Discovery, confidence: 0.38}
+  disposition: needs_more_data
+  category: discovery
+  severity: [low, 26]
+  event:
+    timestamp: "2024-12-06T03:00:00Z"
+    source: other
+    host: entra-disp
+    user: auditor@contoso-disp.io
+    raw:
+      message: "Graph list directoryAudits once by auditor — no role change"
+    message: "Graph list directoryAudits once by auditor — no role change"
+  evidence_field: raw.message
+  evidence_value: "directoryAudits once by auditor — no role change"
+  evidence_why: "May be compliance read."
+  summary: "Single directoryAudits read; needs more data."
+
+- id: disp-nmd-s3-headbucket
+  product_surface: cloud_audit
+  technique: {id: T1619, name: Cloud Storage Object Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 18]
+  event:
+    timestamp: "2024-12-06T04:00:00Z"
+    source: cloudtrail
+    host: aws-disp-nmd
+    user: arn:aws:iam::218900:user/dev.disp
+    raw:
+      message: "dev.disp HeadBucket finance-raw — no GetObject"
+    message: "dev.disp HeadBucket finance-raw — no GetObject"
+  evidence_field: raw.message
+  evidence_value: "HeadBucket finance-raw — no GetObject"
+  evidence_why: "Existence check only."
+  summary: "S3 HeadBucket only; needs more data."
+
+- id: disp-nmd-okta-mfa-challenge-abandon
+  product_surface: idp
+  technique: {id: T1621, name: Multi-Factor Authentication Request Generation, tactic: Credential Access, confidence: 0.4}
+  disposition: needs_more_data
+  category: credential_access
+  severity: [medium, 38]
+  event:
+    timestamp: "2024-12-06T05:00:00Z"
+    source: okta
+    host: okta-disp
+    user: sales.disp@contoso-disp.io
+    raw:
+      message: "2 Okta Verify pushes abandoned — no success, no flood"
+    message: "2 Okta Verify pushes abandoned — no success, no flood"
+  evidence_field: raw.message
+  evidence_value: "2 Okta Verify pushes abandoned — no success, no flood"
+  evidence_why: "Too few to call MFA fatigue."
+  summary: "Two abandoned MFA pushes; needs more data."
+
+- id: disp-nmd-k8s-get-pods
+  product_surface: k8s
+  technique: {id: T1613, name: Container and Resource Discovery, tactic: Discovery, confidence: 0.35}
+  disposition: needs_more_data
+  category: discovery
+  severity: [informational, 17]
+  event:
+    timestamp: "2024-12-06T06:00:00Z"
+    source: other
+    host: k8s-disp-nmd
+    user: system:serviceaccount:dev:ci
+    raw:
+      message: "ci get pods -n staging once — no exec/attach"
+    message: "ci get pods -n staging once — no exec/attach"
+  evidence_field: raw.message
+  evidence_value: "get pods -n staging once — no exec/attach"
+  evidence_why: "Routine CI list may be normal."
+  summary: "Single get pods; needs more data."
+
+- id: disp-nmd-email-preview
+  product_surface: email
+  technique: {id: T1114.002, name: Remote Email Collection, tactic: Collection, confidence: 0.35}
+  disposition: needs_more_data
+  category: collection
+  severity: [low, 24]
+  event:
+    timestamp: "2024-12-06T07:00:00Z"
+    source: other
+    host: m365-disp
+    user: helpdesk@contoso-disp.io
+    raw:
+      message: "helpdesk opened one mailbox item preview for ticket INC-4401 — no export"
+    message: "helpdesk opened one mailbox item preview for ticket INC-4401 — no export"
+  evidence_field: raw.message
+  evidence_value: "one mailbox item preview for ticket INC-4401 — no export"
+  evidence_why: "May be legitimate support."
+  summary: "Single mailbox preview; needs more data."
+
+- id: disp-nmd-window-partial-rdp
+  product_surface: endpoint
+  technique: {id: T1021.001, name: Remote Desktop Protocol, tactic: Lateral Movement, confidence: 0.4}
+  disposition: needs_more_data
+  category: lateral_movement
+  severity: [medium, 40]
+  events:
+    - timestamp: "2024-12-06T08:00:00Z"
+      source: windows_security
+      host: jump-disp-nmd
+      user: CORP\\contractor.disp
+      raw:
+        message: "RDP logon contractor.disp to jump — MFA success"
+      message: "RDP logon contractor.disp to jump — MFA success"
+    - timestamp: "2024-12-06T08:02:00Z"
+      source: windows_security
+      host: jump-disp-nmd
+      user: CORP\\contractor.disp
+      raw:
+        message: "session idle — no lateral hop observed yet"
+      message: "session idle — no lateral hop observed yet"
+  evidence:
+    - {telemetry_index: 1, field: raw.message, value: "no lateral hop observed yet", why: "Incomplete lateral chain"}
+  summary: "RDP without follow-on hop; needs more data."

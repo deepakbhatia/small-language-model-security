@@ -65,6 +65,17 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--no-4bit", action="store_true")
     parser.add_argument(
+        "--backend",
+        default="transformers",
+        choices=["transformers", "vllm"],
+        help="Inference backend (vllm uses GuidedDecodingParams JSON schema)",
+    )
+    parser.add_argument(
+        "--no-guided",
+        action="store_true",
+        help="Disable schema-constrained decoding (still runs repair+verify)",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         help="Reuse preds already in --pred-dir (resume after crash)",
@@ -95,6 +106,8 @@ def main() -> None:
             model_path=args.base,
             adapter_path=None if args.stub else args.adapter,
             stub=args.stub,
+            backend=args.backend,
+            use_guided=not args.no_guided,
             load_in_4bit=False if args.no_4bit else None,
         )
 
@@ -165,6 +178,7 @@ def main() -> None:
     report["adapter"] = None if args.stub else args.adapter
     report["json_valid_rate"] = sum(1 for r in rows if r["sei"] is not None) / len(rows)
     report["verifier_clean_rate"] = sum(1 for r in rows if r["sei"] is not None and not r["errors"]) / len(rows)
+    report["guided"] = (not args.no_guided) and (not args.stub)
 
     text = json.dumps(report, indent=2)
     print(text)

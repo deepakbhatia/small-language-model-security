@@ -106,8 +106,11 @@ def verify_example(
             errors.append(f"bad_evidence_item_type: {type(ev).__name__}")
             continue
         val = ev.get("value", "")
-        if not val:
+        if val is None or val == "":
             continue
+        # Model sometimes emits numeric evidence (e.g. deny counts); ground as text.
+        if not isinstance(val, str):
+            val = str(val)
         # Accept raw substring or JSON-escaped form (Windows paths in dumped logs)
         escaped = json.dumps(val)[1:-1]
         if val not in telemetry_text and escaped not in telemetry_text:

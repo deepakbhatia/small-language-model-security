@@ -45,6 +45,12 @@ Examples:
     --resume-adapter-s3 s3://bucket/sei-adapter-disposition/ \\
     --adapter-s3 s3://bucket/sei-adapter-orpo/ \\
     --guide-s3 s3://bucket/GUIDE_Train.csv ...
+
+  # TP-replay consolidation after ORPO
+  python scripts/aws/launch.py --mode consolidate --wait \\
+    --resume-adapter-s3 s3://bucket/sei-adapter-orpo/ \\
+    --adapter-s3 s3://bucket/sei-adapter-consolidate/ \\
+    --guide-s3 s3://bucket/GUIDE_Train.csv --guide-per-class 3000 ...
 """
 
 from __future__ import annotations
@@ -109,9 +115,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=["smoke", "full", "stage1", "stage2", "attack", "ood", "disposition", "orpo"],
+        choices=[
+            "smoke",
+            "full",
+            "stage1",
+            "stage2",
+            "attack",
+            "ood",
+            "disposition",
+            "orpo",
+            "consolidate",
+        ],
         default="smoke",
-        help="disposition=GUIDE-heavy balanced; orpo=preference align disposition/evidence",
+        help="orpo=preference align; consolidate=TP replay after ORPO",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
@@ -192,7 +208,7 @@ def main() -> None:
         else:
             args.guide_offset = 0
     if args.guide_stage is None:
-        if args.mode in {"ood", "disposition", "orpo"}:
+        if args.mode in {"ood", "disposition", "orpo", "consolidate"}:
             args.guide_stage = 4
         elif args.mode in {"stage2", "attack"}:
             args.guide_stage = 2
@@ -202,8 +218,12 @@ def main() -> None:
         args.guide_per_class = 8000
     if args.guide_per_class is None and args.mode == "orpo":
         args.guide_per_class = 2000
+    if args.guide_per_class is None and args.mode == "consolidate":
+        args.guide_per_class = 3000
     if args.guide_window_size is None:
-        args.guide_window_size = 3 if args.mode in {"disposition", "orpo"} else 1
+        args.guide_window_size = (
+            3 if args.mode in {"disposition", "orpo"} else (2 if args.mode == "consolidate" else 1)
+        )
     if args.atomic_limit is None:
         args.atomic_limit = 2000 if args.mode == "ood" else 8000
     if args.sigma_limit is None:
@@ -216,8 +236,14 @@ def main() -> None:
             "WARNING: --guide-s3 unset; disposition will train on hard-neg YAML only.",
             file=sys.stderr,
         )
-    if args.mode in {"stage2", "attack", "ood", "disposition", "orpo"} and not args.resume_adapter_s3 and not args.dry_run:
-        parser.error("--resume-adapter-s3 is required for --mode stage2|attack|ood|disposition|orpo")
+    if (
+        args.mode in {"stage2", "attack", "ood", "disposition", "orpo", "consolidate"}
+        and not args.resume_adapter_s3
+        and not args.dry_run
+    ):
+        parser.error(
+            "--resume-adapter-s3 is required for --mode stage2|attack|ood|disposition|orpo|consolidate"
+        )
     if args.mode == "stage1" and not args.resume_adapter_s3 and not args.dry_run:
         print(
             "WARNING: --resume-adapter-s3 unset; stage1 will train a fresh adapter "
@@ -354,6 +380,7 @@ def main() -> None:
             "ood": "sei-logs/OOD_OK",
             "disposition": "sei-logs/DISPOSITION_OK",
             "orpo": "sei-logs/ORPO_OK",
+            "consolidate": "sei-logs/CONSOLIDATE_OK",
         }
         key = markers.get(args.mode)
         if key:

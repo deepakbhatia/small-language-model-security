@@ -6,9 +6,13 @@ resume_adapter: checkpoints/sei-sft-disposition/adapter
 recipes:
   - wrong_disposition
   - always_true_positive
+  - nmd_as_true_positive
   - ungrounded_evidence
   - strip_evidence
   - wrong_evidence_index
+  - fractional_severity_score
+  - bad_action_alias
+  - disposition_in_severity
   - over_severity
   - bad_technique
   - action_laundry_list

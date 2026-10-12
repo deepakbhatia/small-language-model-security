@@ -1,0 +1,20 @@
+# Short TP-replay consolidation after ORPO (restore TP recall without wiping disposition).
+stage: 6
+base_model: fdtn-ai/Foundation-Sec-8B
+train_file: data/processed/consolidate/train.jsonl
+val_file: data/processed/consolidate/val.jsonl
+output_dir: checkpoints/sei-sft-consolidate
+resume_adapter: checkpoints/sei-orpo-disposition/adapter
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+epochs: 1
+batch_size: 2
+grad_accum: 8
+lr: 1.0e-5
+warmup_ratio: 0.05
+max_length: 1536
+logging_steps: 10
+eval_steps: 100
+save_steps: 100
+dry_run: false

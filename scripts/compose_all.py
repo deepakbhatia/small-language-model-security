@@ -186,6 +186,13 @@ def main() -> None:
         default=None,
         help="Train-safe OOD scenarios YAML (data/ood/train_scenarios.yaml). Never held_out.",
     )
+    parser.add_argument(
+        "--scenarios",
+        type=Path,
+        action="append",
+        default=None,
+        help="Additional train-safe scenario YAML(s) (repeatable). Never held_out.",
+    )
     parser.add_argument("--ood-limit", type=int, default=None)
     parser.add_argument("--ood-variants", type=int, default=3, help="Host/user variants per OOD scenario")
     parser.add_argument(
@@ -207,6 +214,7 @@ def main() -> None:
         is_held_out_path(args.otrf)
         or is_held_out_path(args.otrf_jsonl)
         or is_held_out_path(args.ood)
+        or any(is_held_out_path(p) for p in (args.scenarios or []))
     )
     if sealed_in and not is_held_out_path(args.out):
         raise SystemExit(
@@ -301,18 +309,27 @@ def main() -> None:
         examples.extend(oj)
         print(f"loaded OTRF jsonl n={len(oj)} from {args.otrf_jsonl}")
 
-    ood_path = args.ood
-    if ood_path and Path(ood_path).exists():
-        ood_rows = load_ood_train_scenarios(
-            Path(ood_path),
-            stages=attack_stages,
-            limit=args.ood_limit,
-            variants_per=args.ood_variants,
-        )
-        examples.extend(ood_rows)
-        print(f"loaded OOD-train n={len(ood_rows)} from {ood_path} variants={args.ood_variants}")
-    elif ood_path:
-        print(f"OOD path missing: {ood_path}")
+    scenario_paths: list[Path] = []
+    if args.ood:
+        scenario_paths.append(Path(args.ood))
+    for p in args.scenarios or []:
+        scenario_paths.append(Path(p))
+
+    for ood_path in scenario_paths:
+        if ood_path.exists():
+            ood_rows = load_ood_train_scenarios(
+                ood_path,
+                stages=attack_stages,
+                limit=args.ood_limit,
+                variants_per=args.ood_variants,
+            )
+            examples.extend(ood_rows)
+            print(
+                f"loaded scenarios n={len(ood_rows)} from {ood_path} "
+                f"variants={args.ood_variants}"
+            )
+        else:
+            print(f"scenario path missing: {ood_path}")
 
     kept = []
     dropped = 0

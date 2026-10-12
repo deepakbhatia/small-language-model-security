@@ -135,6 +135,60 @@ def reject_wrong_evidence_index(gold: str | dict[str, Any]) -> str:
     return _dumps(obj)
 
 
+def reject_nmd_as_true_positive(gold: str | dict[str, Any]) -> str:
+    """Reject filling needs_more_data gaps by forcing true_positive."""
+    obj = _loads(gold)
+    # Always produce the bad pattern even if gold isn't NMD — teaches abstention discipline.
+    obj.setdefault("incident", {})["disposition"] = "true_positive"
+    obj["incident"]["summary"] = "Forced true_positive despite incomplete telemetry."
+    obj["confidence"] = 0.95
+    obj["severity"] = {
+        "level": "high",
+        "score": 75,
+        "rationale": "Over-called incomplete signal as confirmed attack.",
+    }
+    return _dumps(obj)
+
+
+def reject_fractional_severity_score(gold: str | dict[str, Any]) -> str:
+    """Reject severity.score in 0..1 float form (schema requires 0..100 int)."""
+    obj = _loads(gold)
+    obj.setdefault("severity", {})
+    obj["severity"]["score"] = 0.3
+    obj["severity"]["level"] = obj["severity"].get("level", "medium")
+    return _dumps(obj)
+
+
+def reject_bad_action_alias(gold: str | dict[str, Any]) -> str:
+    """Reject non-ontology action types (containment/inform)."""
+    obj = _loads(gold)
+    obj["recommended_actions"] = [
+        {
+            "priority": 1,
+            "type": "containment",
+            "action": "Isolate immediately",
+            "d3fend_id": "D3-ISOL",
+        },
+        {
+            "priority": 2,
+            "type": "inform",
+            "action": "Tell the SOC",
+            "d3fend_id": "D3-AL",
+        },
+    ]
+    return _dumps(obj)
+
+
+def reject_disposition_in_severity(gold: str | dict[str, Any]) -> str:
+    """Reject putting a disposition string into severity.level."""
+    obj = _loads(gold)
+    disp = obj.get("incident", {}).get("disposition", "benign_true_positive")
+    obj.setdefault("severity", {})
+    obj["severity"]["level"] = disp
+    obj["severity"]["score"] = 50
+    return _dumps(obj)
+
+
 RECIPE_BUILDERS = {
     "over_severity": reject_over_severity,
     "bad_technique": reject_bad_technique,
@@ -144,6 +198,10 @@ RECIPE_BUILDERS = {
     "always_true_positive": reject_always_true_positive,
     "strip_evidence": reject_strip_evidence,
     "wrong_evidence_index": reject_wrong_evidence_index,
+    "nmd_as_true_positive": reject_nmd_as_true_positive,
+    "fractional_severity_score": reject_fractional_severity_score,
+    "bad_action_alias": reject_bad_action_alias,
+    "disposition_in_severity": reject_disposition_in_severity,
 }
 
 

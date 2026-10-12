@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition|orpo
+#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition|orpo|consolidate
 #   SEI_GUIDE_PER_CLASS=8000   # disposition: stratified GUIDE per disposition
 #   SEI_GUIDE_WINDOW_SIZE=3    # multi-alert windows by IncidentId
 #   SEI_GUIDE_SCAN_LIMIT=250000
@@ -526,8 +526,74 @@ PY
     echo "ORPO_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ORPO_OK"
   fi
 
+elif [[ "$MODE" == "consolidate" ]]; then
+  echo "[sei] CONSOLIDATE (TP replay + disposition mix after ORPO)"
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: consolidate requires SEI_RESUME_ADAPTER_S3 (sei-adapter-orpo recommended)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-resume/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  if [[ -d data/blind/held_out ]]; then
+    echo "[sei] sealed held_out present — will not use for training"
+  fi
+
+  GUIDE_ARGS=()
+  if [[ -n "$GUIDE_S3" ]]; then
+    aws s3 cp "$GUIDE_S3" /tmp/GUIDE_Train.csv
+    GUIDE_ARGS=(
+      --guide /tmp/GUIDE_Train.csv
+      --guide-per-class "${GUIDE_PER_CLASS:-3000}"
+      --guide-scan-limit "${GUIDE_SCAN_LIMIT:-150000}"
+      --guide-offset "${GUIDE_OFFSET:-0}"
+      --guide-stage 4
+      --guide-window-size "${GUIDE_WINDOW_SIZE:-2}"
+    )
+  fi
+
+  mkdir -p data/processed/consolidate
+  python scripts/compose_all.py \
+    --out data/processed/consolidate \
+    --no-seed \
+    --scenarios data/disposition/train_scenarios.yaml \
+    --scenarios data/ood/train_scenarios.yaml \
+    --ood-variants 3 \
+    --otrf data/otrf/scenarios.yaml \
+    --attack-stages 4 \
+    --max-tp-frac 0.45 \
+    --val-ratio 0.12 \
+    --val-monitor-size 200 \
+    "${GUIDE_ARGS[@]}"
+  python scripts/shard_jsonl.py \
+    --input data/processed/consolidate/train.jsonl \
+    --out-dir data/processed/consolidate/shards \
+    --shard-size "$SHARD_SIZE"
+
+  ADAPTER_ARG=()
+  if [[ -n "$ADAPTER_S3" ]]; then
+    ADAPTER_ARG=(--adapter-s3 "$ADAPTER_S3")
+  fi
+  python scripts/aws/train_shards.py \
+    --base-config configs/sft_consolidate.yaml \
+    --run-config configs/sft_consolidate_aws.yaml \
+    --output-dir checkpoints/sei-sft-consolidate \
+    --shards-dir data/processed/consolidate/shards \
+    --val-file data/processed/consolidate/val.jsonl \
+    --resume-adapter "$RESUME_DEST" \
+    --max-length 1536 \
+    --batch-size 2 \
+    --grad-accum 8 \
+    --epochs 1 \
+    --eval-steps 100 \
+    --lr 1.0e-5 \
+    "${ADAPTER_ARG[@]}"
+  if [[ -n "$BUCKET" ]]; then
+    echo "CONSOLIDATE_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/CONSOLIDATE_OK"
+  fi
+
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition|orpo)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition|orpo|consolidate)" >&2
   exit 2
 fi
 

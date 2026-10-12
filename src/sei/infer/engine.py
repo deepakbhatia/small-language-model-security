@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from sei import SYSTEM_PROMPT
+from sei.infer.constrained import SCHEMA_PATH, build_transformers_prefix_fn, guided_available_transformers
+from sei.infer.repair import repair_sei_obj
 from sei.normalize.ecs import render_telemetry_block
 from sei.rag.attack_rag import render_rag_block
 from sei.verify.validator import verify_example
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCHEMA_PATH = REPO_ROOT / "schemas" / "sei_v1.json"
 DEFAULT_BASE = "fdtn-ai/Foundation-Sec-8B"
 DEFAULT_ADAPTER = REPO_ROOT / "checkpoints" / "sei-sft-stage1" / "adapter"
 
@@ -61,6 +62,7 @@ def parse_and_verify(telemetry_user_text: str, generated: str) -> tuple[dict[str
             return None, [f"invalid_json: {e}"]
     if not isinstance(obj, dict):
         return None, ["invalid_json: expected object"]
+    obj = repair_sei_obj(obj) or obj
     errors = verify_example(telemetry_user_text, obj)
     return obj, errors
 
@@ -104,6 +106,8 @@ class SEIInferencer:
         self.load_in_4bit = bool(load_in_4bit)
         self._llm = None
         self._tokenizer = None
+        self._prefix_fn = None
+        self._guided_note: str | None = None
 
     def _ensure_loaded(self) -> None:
         if self.stub or self._llm is not None:
@@ -156,6 +160,17 @@ class SEIInferencer:
         else:
             self._llm = base
         self._llm.eval()
+
+        if self.use_guided:
+            self._prefix_fn = build_transformers_prefix_fn(self._tokenizer)
+            if self._prefix_fn is not None:
+                self._guided_note = "lm-format-enforcer+sei_v1.json"
+                print(f"[infer] constrained decode ON ({self._guided_note})")
+            else:
+                self._guided_note = "repair-only (install lm-format-enforcer for schema logits)"
+                print(f"[infer] constrained decode soft: {self._guided_note}")
+        else:
+            self._guided_note = "disabled"
 
     def _model_device(self):
         return next(self._llm.parameters()).device
@@ -210,6 +225,7 @@ class SEIInferencer:
             kwargs = {}
             if self.use_guided and SCHEMA_PATH.exists():
                 kwargs["guided_decoding"] = GuidedDecodingParams(json=SCHEMA_PATH.read_text())
+                self._guided_note = "vllm+sei_v1.json"
             params = SamplingParams(temperature=0.0, max_tokens=max_new_tokens, **kwargs)
             outputs = self._llm.generate([prompt], params)
             text = outputs[0].outputs[0].text
@@ -221,13 +237,15 @@ class SEIInferencer:
             )
             inputs = self._tokenizer(prompt, return_tensors="pt")
             inputs = {k: v.to(self._model_device()) for k, v in inputs.items()}
+            gen_kwargs: dict[str, Any] = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": False,
+                "pad_token_id": self._tokenizer.pad_token_id,
+            }
+            if self.use_guided and self._prefix_fn is not None:
+                gen_kwargs["prefix_allowed_tokens_fn"] = self._prefix_fn
             with torch.inference_mode():
-                out = self._llm.generate(
-                    **inputs,
-                    max_new_tokens=max_new_tokens,
-                    do_sample=False,
-                    pad_token_id=self._tokenizer.pad_token_id,
-                )
+                out = self._llm.generate(**inputs, **gen_kwargs)
             text = self._tokenizer.decode(
                 out[0][inputs["input_ids"].shape[-1] :], skip_special_tokens=True
             )
@@ -239,4 +257,6 @@ class SEIInferencer:
             "raw": text,
             "stub": False,
             "adapter": str(self.adapter_path) if self.adapter_path else None,
+            "guided": self._guided_note or ("on" if self.use_guided else "off"),
+            "guided_available": guided_available_transformers() if self.backend != "vllm" else True,
         }

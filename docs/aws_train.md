@@ -217,6 +217,44 @@ python scripts/aws/launch.py --mode orpo --wait \
 
 Success marker: `sei-logs/ORPO_OK`.
 
+## Consolidate (TP replay after ORPO)
+
+Short SFT mix of disposition + OOD scenarios (+ stratified GUIDE) with `--max-tp-frac 0.45`, resuming from the **orpo** adapter — restores TP recall without wiping disposition gains.
+
+```bash
+python scripts/aws/launch.py --mode consolidate --wait \
+  --region us-east-1 \
+  --instance-type g5.xlarge \
+  --ami-id ami-XXXXXXXX \
+  --subnet-id subnet-XXXXXXXX \
+  --security-group-ids sg-XXXXXXXX \
+  --iam-instance-profile sei-train-profile \
+  --s3-bucket my-sei-bucket \
+  --resume-adapter-s3 s3://my-sei-bucket/sei-adapter-orpo/ \
+  --adapter-s3 s3://my-sei-bucket/sei-adapter-consolidate/ \
+  --guide-s3 s3://my-sei-bucket/GUIDE_Train.csv \
+  --guide-per-class 3000 \
+  --guide-window-size 2
+```
+
+Success marker: `sei-logs/CONSOLIDATE_OK`.
+
+### Constrained decode at eval
+
+`eval_model.py` / `SEIInferencer` default `use_guided=True`:
+- **transformers:** `lm-format-enforcer` JSON schema logits (install via `pip install -e ".[train]"`)
+- **vllm:** `GuidedDecodingParams(json=schemas/sei_v1.json)` (`--backend vllm`)
+- Always runs `repair_sei_obj` (action aliases, fractional severity scores) before verify
+
+```bash
+pip install -e ".[train]"
+PYTHONPATH=src:. python scripts/eval_model.py \
+  --adapter checkpoints/sei-orpo-disposition/adapter \
+  --gold data/blind/held_out/eval.jsonl \
+  --pred-dir eval/preds/held-out-guided \
+  --out eval/reports/held-out-guided.json
+```
+
 Local compose smoke (hard-neg only):
 
 ```bash
