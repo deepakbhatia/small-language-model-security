@@ -15,7 +15,8 @@ from sei.verify.validator import verify_example
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_BASE = "fdtn-ai/Foundation-Sec-8B"
-DEFAULT_ADAPTER = REPO_ROOT / "checkpoints" / "sei-sft-stage1" / "adapter"
+# Ship candidate: disposition ORPO (held-out macro-F1 0.49). Not consolidate.
+DEFAULT_ADAPTER = REPO_ROOT / "checkpoints" / "sei-orpo-disposition" / "adapter"
 
 
 def build_prompt(events: list[dict[str, Any]], context: dict[str, Any] | None = None, *, use_rag: bool = True) -> str:
