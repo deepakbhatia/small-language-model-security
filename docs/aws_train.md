@@ -217,9 +217,26 @@ python scripts/aws/launch.py --mode orpo --wait \
 
 Success marker: `sei-logs/ORPO_OK`.
 
-## Consolidate (TP replay after ORPO)
+### Ship candidate (pin this)
 
-Short SFT mix of disposition + OOD scenarios (+ stratified GUIDE) with `--max-tp-frac 0.45`, resuming from the **orpo** adapter — restores TP recall without wiping disposition gains.
+**Champion:** `s3://$BUCKET/sei-adapter-orpo/` → local `checkpoints/sei-orpo-disposition/adapter`.
+
+Held-out (n=49, guided): disposition macro-F1 **0.49**, TP F1 0.72, verifier clean 0.84.
+`SEIInferencer` / `eval_model.py` / `infer_sei.py` default to this adapter path.
+
+```bash
+aws s3 sync s3://$BUCKET/sei-adapter-orpo/ checkpoints/sei-orpo-disposition/adapter/
+PYTHONPATH=src:. python scripts/eval_model.py \
+  --gold data/blind/held_out/eval.jsonl \
+  --pred-dir eval/preds/held-out-orpo \
+  --out eval/reports/held-out-orpo.json
+```
+
+Do **not** promote `sei-adapter-consolidate/` — TP-replay SFT after ORPO dropped macro-F1 to 0.43 and wiped NMD on the same sealed set.
+
+## Consolidate (experimental — do not ship)
+
+Optional TP-replay SFT after ORPO. Kept for experiments only; held-out showed regression vs ORPO.
 
 ```bash
 python scripts/aws/launch.py --mode consolidate --wait \
@@ -237,7 +254,7 @@ python scripts/aws/launch.py --mode consolidate --wait \
   --guide-window-size 2
 ```
 
-Success marker: `sei-logs/CONSOLIDATE_OK`.
+Success marker: `sei-logs/CONSOLIDATE_OK` (not a ship gate).
 
 ### Constrained decode at eval
 
