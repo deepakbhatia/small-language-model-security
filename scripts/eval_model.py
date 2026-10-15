@@ -76,11 +76,18 @@ def main() -> None:
         help="Disable schema-constrained decoding (still runs repair+verify)",
     )
     parser.add_argument(
+        "--require-guided",
+        action="store_true",
+        help="Fail if lm-format-enforcer / schema logits unavailable (no repair-only fallback)",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         help="Reuse preds already in --pred-dir (resume after crash)",
     )
     args = parser.parse_args()
+    if args.require_guided and args.no_guided:
+        raise SystemExit("--require-guided conflicts with --no-guided")
 
     os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
     gold_rows = _load_gold_rows(args.gold)
@@ -108,6 +115,7 @@ def main() -> None:
             stub=args.stub,
             backend=args.backend,
             use_guided=not args.no_guided,
+            require_guided=args.require_guided,
             load_in_4bit=False if args.no_4bit else None,
         )
 

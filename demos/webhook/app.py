@@ -34,12 +34,14 @@ def get_engine() -> SEIInferencer:
         backend = os.environ.get("SEI_BACKEND", "transformers")
         load_4bit = os.environ.get("SEI_LOAD_4BIT")
         load_in_4bit = None if load_4bit is None else load_4bit == "1"
+        require_guided = os.environ.get("SEI_REQUIRE_GUIDED", "0") == "1"
         _engine = SEIInferencer(
             model_path=model,
             adapter_path=None if stub else adapter,
             backend=backend,
             stub=stub,
             load_in_4bit=load_in_4bit,
+            require_guided=require_guided,
         )
     return _engine
 
