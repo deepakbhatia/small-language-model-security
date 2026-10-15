@@ -246,14 +246,20 @@ Success marker: `sei-logs/CONSOLIDATE_OK`.
 - **vllm:** `GuidedDecodingParams(json=schemas/sei_v1.json)` (`--backend vllm`)
 - Always runs `repair_sei_obj` (action aliases, fractional severity scores) before verify
 
+Without `lm-format-enforcer`, transformers falls back to **repair-only** (weaker than the guided held-out run). For ship/eval, require schema logits:
+
 ```bash
-pip install -e ".[train]"
+pip install -e ".[train]"   # includes lm-format-enforcer
+python scripts/check_guided.py
 PYTHONPATH=src:. python scripts/eval_model.py \
   --adapter checkpoints/sei-orpo-disposition/adapter \
   --gold data/blind/held_out/eval.jsonl \
   --pred-dir eval/preds/held-out-guided \
-  --out eval/reports/held-out-guided.json
+  --out eval/reports/held-out-guided.json \
+  --require-guided
 ```
+
+Webhook: `SEI_REQUIRE_GUIDED=1` fails load if schema logits are missing.
 
 Local compose smoke (hard-neg only):
 

@@ -339,6 +339,8 @@ Rejected pair recipes (see `src/sei/train/preferences.py`):
 
 Training teaches content; **grammar enforces shape**. Never ship unconstrained sampling for technique IDs in production.
 
+Install: `pip install -e ".[train]"` (pulls `lm-format-enforcer`). Verify with `python scripts/check_guided.py`. Pass `--require-guided` to `eval_model.py` / `infer_sei.py` (or `SEI_REQUIRE_GUIDED=1` for the webhook) so missing logits fail closed instead of silently using repair-only.
+
 ```python
 from vllm import LLM, SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
