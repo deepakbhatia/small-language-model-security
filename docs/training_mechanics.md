@@ -361,21 +361,13 @@ Air-gap: `llama-cli -m sei-8b-instruct-q4_k_m.gguf --grammar-file grammars/sei_v
 
 ## 9. Merge adapters and export GGUF
 
-```python
-from peft import PeftModel
-from transformers import AutoModelForCausalLM
-import torch
-
-base = AutoModelForCausalLM.from_pretrained(
-    "fdtn-ai/Foundation-Sec-8B", torch_dtype=torch.bfloat16, device_map="cpu"
-)
-merged = PeftModel.from_pretrained(base, "checkpoints/sei-orpo/adapter")
-merged = merged.merge_and_unload()
-merged.save_pretrained("checkpoints/sei-8b-instruct")
-```
+Use the **ORPO disposition** adapter (`checkpoints/sei-orpo-disposition/adapter`). See [`docs/airgap_bundle.md`](airgap_bundle.md).
 
 ```bash
+aws s3 sync s3://$BUCKET/sei-adapter-orpo/ checkpoints/sei-orpo-disposition/adapter/
+python scripts/merge_adapters.py   # defaults → checkpoints/sei-8b-instruct
 python scripts/export_gguf.py --model checkpoints/sei-8b-instruct --quant Q4_K_M
+# optional: --llama-cpp /path/to/llama.cpp
 ```
 
 Ship: merged weights (or GGUF) + `schemas/sei_v1.json` + `grammars/sei_v1.gbnf` + pinned ATT&CK ID list + `NOTICE`.
