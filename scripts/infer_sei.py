@@ -2,7 +2,7 @@
 """Run SEI inference with base model + LoRA adapter.
 
 Examples:
-  # Default: checkpoints/sei-sft-stage1/adapter + Foundation-Sec-8B
+  # Default: checkpoints/sei-orpo-disposition/adapter + Foundation-Sec-8B
   python scripts/infer_sei.py
 
   # Custom message
@@ -63,7 +63,7 @@ def main() -> None:
     parser.add_argument(
         "--adapter",
         default=os.environ.get("SEI_ADAPTER_PATH", str(DEFAULT_ADAPTER)),
-        help="LoRA adapter dir (default: checkpoints/sei-sft-stage1/adapter)",
+        help="LoRA adapter dir (default: checkpoints/sei-orpo-disposition/adapter)",
     )
     parser.add_argument("--no-adapter", action="store_true", help="Base model only")
     parser.add_argument("--stub", action="store_true", help="No weights (CI/demo)")

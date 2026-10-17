@@ -26,7 +26,8 @@ python scripts/eval_harness.py --gold data/golden --pred data/golden
 # Local SIEM webhook demo (no GPU required for echo/stub mode)
 uvicorn demos.webhook.app:app --reload --port 8080
 
-# Run stage-1 adapter (after aws s3 sync → checkpoints/sei-sft-stage1/adapter)
+# Sync ship-candidate ORPO adapter, then infer
+#   aws s3 sync s3://$BUCKET/sei-adapter-orpo/ checkpoints/sei-orpo-disposition/adapter/
 python scripts/infer_sei.py
 # Webhook with real weights:
 #   SEI_STUB=0 uvicorn demos.webhook.app:app --port 8080
@@ -73,7 +74,7 @@ python scripts/compose_all.py --out data/processed/v1
 python scripts/train_sft.py --stage 1 --config configs/sft_stage1.yaml
 # ... stages 2–4 ...
 python scripts/train_orpo.py --config configs/orpo.yaml
-python scripts/merge_adapters.py --adapter checkpoints/sei-orpo/adapter --out checkpoints/sei-8b-instruct
+python scripts/merge_adapters.py --adapter checkpoints/sei-orpo-disposition/adapter --out checkpoints/sei-8b-instruct
 python scripts/export_gguf.py --model checkpoints/sei-8b-instruct --quant Q4_K_M
 ```
 
