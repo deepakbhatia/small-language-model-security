@@ -74,7 +74,8 @@ python scripts/compose_all.py --out data/processed/v1
 python scripts/train_sft.py --stage 1 --config configs/sft_stage1.yaml
 # ... stages 2–4 ...
 python scripts/train_orpo.py --config configs/orpo.yaml
-python scripts/merge_adapters.py --adapter checkpoints/sei-orpo-disposition/adapter --out checkpoints/sei-8b-instruct
+# Merge ORPO champion → HF, then GGUF air-gap bundle (see docs/airgap_bundle.md)
+python scripts/merge_adapters.py
 python scripts/export_gguf.py --model checkpoints/sei-8b-instruct --quant Q4_K_M
 ```
 
