@@ -70,6 +70,11 @@ def main() -> None:
     parser.add_argument("--load-4bit", action="store_true", help="Force 4-bit (CUDA)")
     parser.add_argument("--no-4bit", action="store_true", help="Disable 4-bit")
     parser.add_argument("--no-rag", action="store_true")
+    parser.add_argument(
+        "--require-guided",
+        action="store_true",
+        help="Fail if lm-format-enforcer schema logits unavailable",
+    )
     parser.add_argument("--message", default="cmd.exe /c whoami /all")
     parser.add_argument("--source", default="sysmon")
     parser.add_argument("--host", default="workstation-01")
@@ -96,6 +101,7 @@ def main() -> None:
         adapter_path=adapter,
         stub=args.stub,
         load_in_4bit=load_in_4bit,
+        require_guided=args.require_guided,
     )
     events, context = _events_from_args(args)
     result = eng.generate(

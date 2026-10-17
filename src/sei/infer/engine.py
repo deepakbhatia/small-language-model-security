@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from sei import SYSTEM_PROMPT
-from sei.infer.constrained import SCHEMA_PATH, build_transformers_prefix_fn, guided_available_transformers
+from sei.infer.constrained import (
+    SCHEMA_PATH,
+    assert_guided_ready,
+    build_transformers_prefix_fn,
+    guided_available_transformers,
+)
 from sei.infer.repair import repair_sei_obj
 from sei.normalize.ecs import render_telemetry_block
 from sei.rag.attack_rag import render_rag_block
@@ -88,6 +93,7 @@ class SEIInferencer:
         adapter_path: str | Path | None = None,
         backend: str = "transformers",
         use_guided: bool = True,
+        require_guided: bool = False,
         stub: bool = False,
         load_in_4bit: bool | None = None,
     ):
@@ -95,6 +101,8 @@ class SEIInferencer:
         self.adapter_path = Path(adapter_path) if adapter_path else None
         self.backend = backend
         self.use_guided = use_guided
+        # Ship/eval: refuse repair-only fallback when schema logits are mandatory.
+        self.require_guided = bool(require_guided) and use_guided
         # Explicit stub=True wins; otherwise stub only when neither base nor adapter is usable.
         if stub:
             self.stub = True
@@ -119,6 +127,8 @@ class SEIInferencer:
                     "vLLM backend does not load LoRA adapters here; "
                     "merge adapters first or use backend=transformers"
                 )
+            if self.require_guided:
+                assert_guided_ready(backend="vllm")
             from vllm import LLM
 
             self._llm = LLM(model=self.model_path, max_model_len=4096)
@@ -163,7 +173,9 @@ class SEIInferencer:
         self._llm.eval()
 
         if self.use_guided:
-            self._prefix_fn = build_transformers_prefix_fn(self._tokenizer)
+            self._prefix_fn = build_transformers_prefix_fn(
+                self._tokenizer, require=self.require_guided
+            )
             if self._prefix_fn is not None:
                 self._guided_note = "lm-format-enforcer+sei_v1.json"
                 print(f"[infer] constrained decode ON ({self._guided_note})")
@@ -224,9 +236,11 @@ class SEIInferencer:
                 prompt = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
             kwargs = {}
-            if self.use_guided and SCHEMA_PATH.exists():
-                kwargs["guided_decoding"] = GuidedDecodingParams(json=SCHEMA_PATH.read_text())
-                self._guided_note = "vllm+sei_v1.json"
+            if self.use_guided:
+                if self.require_guided or SCHEMA_PATH.exists():
+                    assert_guided_ready(backend="vllm")
+                    kwargs["guided_decoding"] = GuidedDecodingParams(json=SCHEMA_PATH.read_text())
+                    self._guided_note = "vllm+sei_v1.json"
             params = SamplingParams(temperature=0.0, max_tokens=max_new_tokens, **kwargs)
             outputs = self._llm.generate([prompt], params)
             text = outputs[0].outputs[0].text
