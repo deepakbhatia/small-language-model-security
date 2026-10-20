@@ -58,6 +58,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Eval fine-tuned SEI adapter on golden/JSONL")
     parser.add_argument("--gold", type=Path, default=Path("data/golden"))
     parser.add_argument("--adapter", default=os.environ.get("SEI_ADAPTER_PATH", str(DEFAULT_ADAPTER)))
+    parser.add_argument(
+        "--no-adapter",
+        action="store_true",
+        help="Eval merged/full weights only (--base); do not load a LoRA adapter",
+    )
     parser.add_argument("--base", default=os.environ.get("SEI_MODEL_PATH", DEFAULT_BASE))
     parser.add_argument("--pred-dir", type=Path, default=Path("eval/preds/stage1"))
     parser.add_argument("--out", type=Path, default=Path("eval/reports/stage1.json"))
@@ -111,7 +116,7 @@ def main() -> None:
     if need_model:
         eng = SEIInferencer(
             model_path=args.base,
-            adapter_path=None if args.stub else args.adapter,
+            adapter_path=None if (args.stub or args.no_adapter) else args.adapter,
             stub=args.stub,
             backend=args.backend,
             use_guided=not args.no_guided,
@@ -183,7 +188,7 @@ def main() -> None:
     report = evaluate_paired(golds, preds)
     report["n_files"] = len(gold_rows)
     report["gold"] = str(args.gold)
-    report["adapter"] = None if args.stub else args.adapter
+    report["adapter"] = None if (args.stub or args.no_adapter) else args.adapter
     report["json_valid_rate"] = sum(1 for r in rows if r["sei"] is not None) / len(rows)
     report["verifier_clean_rate"] = sum(1 for r in rows if r["sei"] is not None and not r["errors"]) / len(rows)
     report["guided"] = (not args.no_guided) and (not args.stub)
