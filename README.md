@@ -23,17 +23,18 @@ python scripts/verify_jsonl.py --input data/processed/seed/train.jsonl
 # Eval harness on golden predictions (baseline / stub)
 python scripts/eval_harness.py --gold data/golden --pred data/golden
 
-# Local SIEM webhook demo (no GPU required for echo/stub mode)
+# Case agent API (stub without weights; uses merged HF when present)
 uvicorn demos.webhook.app:app --reload --port 8080
+# Docs: docs/agent_api.md  — POST /v1/wazuh → case envelope + approve/deny
 
 # Sync ship-candidate ORPO adapter, then infer
 #   aws s3 sync s3://$BUCKET/sei-adapter-orpo/ checkpoints/sei-orpo-disposition/adapter/
 python scripts/infer_sei.py
-# Webhook with real weights:
-#   SEI_STUB=0 uvicorn demos.webhook.app:app --port 8080
 ```
 
 Training tutorial (read first): [`docs/training_mechanics.md`](docs/training_mechanics.md)
+
+Agent API (rules + SEI, no planner LLM): [`docs/agent_api.md`](docs/agent_api.md)
 
 **Kaggle (free GPU):** see [`docs/kaggle.md`](docs/kaggle.md) and [`notebooks/kaggle_train_stage1.ipynb`](notebooks/kaggle_train_stage1.ipynb).
 

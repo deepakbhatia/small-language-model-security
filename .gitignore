@@ -21,6 +21,8 @@ data/processed/**
 !data/blind/
 !data/blind/**
 data/processed/blind/
+data/cases/**
+!data/cases/.gitkeep
 # Prefer composing on Kaggle from GUIDE input; keep only small seed in git
 *.gguf
 .DS_Store
