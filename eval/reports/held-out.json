@@ -1,0 +1,59 @@
+{
+  "n": 25,
+  "disposition": {
+    "macro_f1": 0.2222222222222222,
+    "per_class": {
+      "benign_true_positive": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "false_positive": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "needs_more_data": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "true_positive": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "f1": 0.8888888888888888
+      }
+    },
+    "support": {
+      "true_positive": 20,
+      "benign_true_positive": 2,
+      "false_positive": 1,
+      "needs_more_data": 2
+    }
+  },
+  "techniques": {
+    "exact_id_precision": 0.32,
+    "exact_id_recall": 0.32,
+    "exact_id_f1": 0.32,
+    "parent_tactic_accuracy": 0.08
+  },
+  "severity": {
+    "accuracy": 0.48,
+    "ordinal_mae": 0.76
+  },
+  "evidence": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+  },
+  "actions": {
+    "valid_type_rate": 1.0,
+    "valid_d3fend_rate": 1.0,
+    "overlong_action_rate": 0.0
+  },
+  "n_files": 25,
+  "gold": "data/blind/held_out/eval.jsonl",
+  "adapter": "checkpoints/sei-sft-attack/adapter",
+  "json_valid_rate": 1.0,
+  "verifier_clean_rate": 1.0
+}

@@ -1,0 +1,60 @@
+{
+  "n": 49,
+  "disposition": {
+    "macro_f1": 0.4625786163522012,
+    "per_class": {
+      "benign_true_positive": {
+        "precision": 0.5,
+        "recall": 0.75,
+        "f1": 0.6
+      },
+      "false_positive": {
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "f1": 0.4
+      },
+      "needs_more_data": {
+        "precision": 0.1111111111111111,
+        "recall": 0.16666666666666666,
+        "f1": 0.13333333333333333
+      },
+      "true_positive": {
+        "precision": 0.8636363636363636,
+        "recall": 0.6129032258064516,
+        "f1": 0.7169811320754716
+      }
+    },
+    "support": {
+      "true_positive": 31,
+      "benign_true_positive": 8,
+      "false_positive": 4,
+      "needs_more_data": 6
+    }
+  },
+  "techniques": {
+    "exact_id_precision": 0.3673469387755102,
+    "exact_id_recall": 0.3673469387755102,
+    "exact_id_f1": 0.36734693877551017,
+    "parent_tactic_accuracy": 0.3469387755102041
+  },
+  "severity": {
+    "accuracy": 0.40816326530612246,
+    "ordinal_mae": 0.9387755102040817
+  },
+  "evidence": {
+    "precision": 0.26,
+    "recall": 0.25,
+    "f1": 0.2549019607843137
+  },
+  "actions": {
+    "valid_type_rate": 1.0,
+    "valid_d3fend_rate": 1.0,
+    "overlong_action_rate": 0.0
+  },
+  "n_files": 49,
+  "gold": "data/blind/held_out/eval.jsonl",
+  "adapter": null,
+  "json_valid_rate": 0.9591836734693877,
+  "verifier_clean_rate": 0.8775510204081632,
+  "guided": true
+}

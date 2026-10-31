@@ -1,0 +1,59 @@
+{
+  "n": 49,
+  "disposition": {
+    "macro_f1": 0.490356394129979,
+    "per_class": {
+      "benign_true_positive": {
+        "precision": 0.5384615384615384,
+        "recall": 0.875,
+        "f1": 0.6666666666666666
+      },
+      "false_positive": {
+        "precision": 0.4,
+        "recall": 0.5,
+        "f1": 0.4444444444444444
+      },
+      "needs_more_data": {
+        "precision": 0.1111111111111111,
+        "recall": 0.16666666666666666,
+        "f1": 0.13333333333333333
+      },
+      "true_positive": {
+        "precision": 0.8636363636363636,
+        "recall": 0.6129032258064516,
+        "f1": 0.7169811320754716
+      }
+    },
+    "support": {
+      "true_positive": 31,
+      "benign_true_positive": 8,
+      "false_positive": 4,
+      "needs_more_data": 6
+    }
+  },
+  "techniques": {
+    "exact_id_precision": 0.40425531914893614,
+    "exact_id_recall": 0.3877551020408163,
+    "exact_id_f1": 0.39583333333333326,
+    "parent_tactic_accuracy": 0.32653061224489793
+  },
+  "severity": {
+    "accuracy": 0.40816326530612246,
+    "ordinal_mae": 1.0408163265306123
+  },
+  "evidence": {
+    "precision": 0.2978723404255319,
+    "recall": 0.2692307692307692,
+    "f1": 0.2828282828282829
+  },
+  "actions": {
+    "valid_type_rate": 0.8846153846153846,
+    "valid_d3fend_rate": 1.0,
+    "overlong_action_rate": 0.0
+  },
+  "n_files": 49,
+  "gold": "data/blind/held_out/eval.jsonl",
+  "adapter": "checkpoints/sei-orpo-disposition/adapter",
+  "json_valid_rate": 0.9387755102040817,
+  "verifier_clean_rate": 0.673469387755102
+}
