@@ -146,6 +146,19 @@ def wazuh_to_events(payload: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+@app.get("/")
+def root() -> dict[str, Any]:
+    """Browser-friendly index (GET / is not a triage route)."""
+    return {
+        "service": "SEI Case Agent",
+        "health": "/health",
+        "docs": "/docs",
+        "triage": "POST /v1/triage",
+        "wazuh": "POST /v1/wazuh",
+        "cases": "GET /v1/cases/{case_id}",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     model, adapter, prefer_merged = _resolve_paths()
