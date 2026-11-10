@@ -84,6 +84,7 @@ def build_user_data(args: argparse.Namespace) -> str:
         "SEI_ATOMIC_LIMIT": str(args.atomic_limit),
         "SEI_SIGMA_LIMIT": str(args.sigma_limit),
         "SEI_CORPORA_S3": args.corpora_s3 or "",
+        "SEI_CERTAINTY_S3": getattr(args, "certainty_s3", "") or "",
         "SEI_SHARD_SIZE": str(args.shard_size),
         "SEI_KEEP_ALIVE": "1" if args.keep_alive else "0",
         "HF_TOKEN": args.hf_token or "",
@@ -124,10 +125,11 @@ def main() -> None:
             "ood",
             "disposition",
             "orpo",
+            "orpo_certainty",
             "consolidate",
         ],
         default="smoke",
-        help="orpo=preference align; consolidate=TP replay after ORPO",
+        help="orpo=preference align; orpo_certainty=prebuilt certainty prefs; consolidate=TP replay",
     )
     parser.add_argument("--dry-run", action="store_true", help="Print user-data / plan only")
     parser.add_argument("--region", default="us-east-1")
@@ -177,6 +179,11 @@ def main() -> None:
         "--corpora-s3",
         default="",
         help="Optional s3://…/corpora/ with pre-downloaded atomic+sigma under data/raw layout",
+    )
+    parser.add_argument(
+        "--certainty-s3",
+        default="",
+        help="s3://…/certainty_synth/ prebuilt prefs for --mode orpo_certainty",
     )
     parser.add_argument("--shard-size", type=int, default=2000)
     parser.add_argument("--hf-token", default="", help="Optional HF token")

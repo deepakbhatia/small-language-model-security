@@ -36,18 +36,36 @@ def disposition_metrics(golds: list[dict], preds: list[dict]) -> dict[str, Any]:
     return {"macro_f1": float(macro), "per_class": per_class, "support": dict(Counter(y_true))}
 
 
+def _technique_id(t: Any) -> str | None:
+    """Accept sei_v1 objects or bare technique id strings from messy model output."""
+    if isinstance(t, str):
+        s = t.strip()
+        return s or None
+    if isinstance(t, dict):
+        tid = t.get("id")
+        return str(tid) if tid else None
+    return None
+
+
+def _technique_tactic(t: Any) -> str | None:
+    if isinstance(t, dict):
+        tac = t.get("tactic")
+        return str(tac) if tac else None
+    return None
+
+
 def technique_f1(golds: list[dict], preds: list[dict]) -> dict[str, Any]:
     """Micro multi-label exact-ID F1."""
     tp = fp = fn = 0
     tactic_correct = tactic_total = 0
     for g, p in zip(golds, preds):
-        gt = {t["id"] for t in g.get("techniques") or []}
-        pr = {t["id"] for t in p.get("techniques") or []}
+        gt = {tid for t in (g.get("techniques") or []) if (tid := _technique_id(t))}
+        pr = {tid for t in (p.get("techniques") or []) if (tid := _technique_id(t))}
         tp += len(gt & pr)
         fp += len(pr - gt)
         fn += len(gt - pr)
-        gt_tac = {t.get("tactic") for t in g.get("techniques") or []}
-        pr_tac = {t.get("tactic") for t in p.get("techniques") or []}
+        gt_tac = {tac for t in (g.get("techniques") or []) if (tac := _technique_tactic(t))}
+        pr_tac = {tac for t in (p.get("techniques") or []) if (tac := _technique_tactic(t))}
         if gt_tac:
             tactic_total += 1
             if gt_tac & pr_tac:
@@ -63,13 +81,22 @@ def technique_f1(golds: list[dict], preds: list[dict]) -> dict[str, Any]:
     }
 
 
+def _severity_level(sei: dict[str, Any]) -> str:
+    sev = sei.get("severity")
+    if isinstance(sev, dict):
+        return str(sev.get("level") or "medium")
+    if isinstance(sev, str) and sev:
+        return sev
+    return "medium"
+
+
 def severity_metrics(golds: list[dict], preds: list[dict]) -> dict[str, Any]:
     correct = 0
     mae = 0.0
     n = len(golds)
     for g, p in zip(golds, preds):
-        gl = g["severity"]["level"]
-        pl = p["severity"]["level"]
+        gl = _severity_level(g)
+        pl = _severity_level(p)
         if gl == pl:
             correct += 1
         gi = SEVERITY_ORDER.index(gl) if gl in SEVERITY_ORDER else 2

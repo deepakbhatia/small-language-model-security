@@ -23,7 +23,13 @@ def load_jsonl(path: Path) -> list[dict]:
 def expand_preferences(sft_rows: list[dict], recipes: list[str]) -> list[dict]:
     out = []
     for row in sft_rows:
-        if int(row.get("meta", {}).get("curriculum_stage", 4)) < 4:
+        stage = row.get("meta", {}).get("curriculum_stage", 4)
+        try:
+            stage_n = int(stage)
+        except (TypeError, ValueError):
+            # String stages (e.g. thin_telemetry) are treated as eligible.
+            stage_n = 4
+        if stage_n < 4:
             continue
         gold = row["messages"][-1]["content"]
         for recipe in recipes:
@@ -40,21 +46,30 @@ def main(argv: list[str] | None = None) -> None:
 
     cfg = yaml.safe_load(args.config.read_text())
     recipes = cfg.get("recipes", list(RECIPE_BUILDERS.keys()))
-    train_path = Path(cfg["train_file"])
+    pref_out = Path(cfg.get("preference_file", "data/processed/orpo/preferences.jsonl"))
     from sei.blind_guard import assert_dataset_not_held_out, assert_not_held_out_path
 
-    assert_not_held_out_path(train_path, role="orpo train_file")
-    rows = load_jsonl(train_path)
-    assert_dataset_not_held_out(rows, role="orpo train_file")
-    prefs = expand_preferences(rows, recipes)
-    print(f"[orpo] preference pairs={len(prefs)} recipes={recipes}")
+    use_existing = bool(cfg.get("use_existing_preferences", False)) and pref_out.exists()
+    if use_existing:
+        assert_not_held_out_path(pref_out, role="orpo preference_file")
+        prefs = load_jsonl(pref_out)
+        assert_dataset_not_held_out(prefs, role="orpo preference_file")
+        print(f"[orpo] using existing preferences n={len(prefs)} path={pref_out}")
+    else:
+        train_path = Path(cfg["train_file"])
+        assert_not_held_out_path(train_path, role="orpo train_file")
+        rows = load_jsonl(train_path)
+        assert_dataset_not_held_out(rows, role="orpo train_file")
+        prefs = expand_preferences(rows, recipes)
+        print(f"[orpo] preference pairs={len(prefs)} recipes={recipes}")
+        pref_out.parent.mkdir(parents=True, exist_ok=True)
+        with pref_out.open("w") as f:
+            for p in prefs:
+                f.write(json.dumps(p, ensure_ascii=False) + "\n")
+        print(f"[orpo] wrote {pref_out}")
 
-    pref_out = Path(cfg.get("preference_file", "data/processed/orpo/preferences.jsonl"))
-    pref_out.parent.mkdir(parents=True, exist_ok=True)
-    with pref_out.open("w") as f:
-        for p in prefs:
-            f.write(json.dumps(p, ensure_ascii=False) + "\n")
-    print(f"[orpo] wrote {pref_out}")
+    if not prefs:
+        raise SystemExit("no preference pairs to train on")
 
     if args.dry_run or cfg.get("dry_run"):
         return
@@ -122,19 +137,25 @@ def main(argv: list[str] | None = None) -> None:
         return {"prompt": prompt, "chosen": p["chosen"], "rejected": p["rejected"]}
 
     ds = Dataset.from_list([to_orpo(p) for p in prefs])
-    orpo_args = ORPOConfig(
-        output_dir=cfg.get("output_dir", "checkpoints/sei-orpo"),
-        per_device_train_batch_size=int(cfg.get("batch_size", 1)),
-        gradient_accumulation_steps=int(cfg.get("grad_accum", 16)),
-        learning_rate=float(cfg.get("lr", 5e-6)),
-        num_train_epochs=float(cfg.get("epochs", 1)),
-        beta=float(cfg.get("beta", 0.1)),
-        bf16=use_bf16,
-        fp16=use_fp16,
-        max_length=int(cfg.get("max_length", 4096)),
-        max_completion_length=int(cfg.get("max_completion_length", 1024)),
-        report_to=cfg.get("report_to", "none"),
-    )
+    batch_size = int(cfg.get("batch_size", cfg.get("per_device_train_batch_size", 1)))
+    grad_accum = int(cfg.get("grad_accum", cfg.get("gradient_accumulation_steps", 16)))
+    lr = float(cfg.get("lr", cfg.get("learning_rate", 5e-6)))
+    orpo_kwargs: dict = {
+        "output_dir": cfg.get("output_dir", "checkpoints/sei-orpo"),
+        "per_device_train_batch_size": batch_size,
+        "gradient_accumulation_steps": grad_accum,
+        "learning_rate": lr,
+        "num_train_epochs": float(cfg.get("epochs", 1)),
+        "beta": float(cfg.get("beta", 0.1)),
+        "bf16": use_bf16,
+        "fp16": use_fp16,
+        "max_length": int(cfg.get("max_length", 4096)),
+        "max_completion_length": int(cfg.get("max_completion_length", 1024)),
+        "report_to": cfg.get("report_to", "none"),
+    }
+    if cfg.get("max_steps") is not None:
+        orpo_kwargs["max_steps"] = int(cfg["max_steps"])
+    orpo_args = ORPOConfig(**orpo_kwargs)
     trainer = ORPOTrainer(
         model=model,
         args=orpo_args,

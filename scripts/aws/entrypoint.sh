@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs on the EC2 GPU instance (invoked from user-data).
 # Env:
-#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition|orpo|consolidate
+#   SEI_MODE=smoke|full|stage1|stage2|attack|ood|disposition|orpo|orpo_certainty|consolidate
+#   SEI_CERTAINTY_S3=s3://bucket/certainty_synth/   # prebuilt prefs for orpo_certainty
 #   SEI_GUIDE_PER_CLASS=8000   # disposition: stratified GUIDE per disposition
 #   SEI_GUIDE_WINDOW_SIZE=3    # multi-alert windows by IncidentId
 #   SEI_GUIDE_SCAN_LIMIT=250000
@@ -35,6 +36,7 @@ RESUME_ADAPTER_S3="${SEI_RESUME_ADAPTER_S3:-}"
 GUIDE_S3="${SEI_GUIDE_S3:-}"
 MODEL_S3="${SEI_MODEL_S3:-}"
 CORPORA_S3="${SEI_CORPORA_S3:-}"
+CERTAINTY_S3="${SEI_CERTAINTY_S3:-}"
 GUIDE_LIMIT="${SEI_GUIDE_LIMIT:-20000}"
 GUIDE_OFFSET="${SEI_GUIDE_OFFSET:-0}"
 GUIDE_STAGE="${SEI_GUIDE_STAGE:-1}"
@@ -526,6 +528,53 @@ PY
     echo "ORPO_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ORPO_OK"
   fi
 
+elif [[ "$MODE" == "orpo_certainty" ]]; then
+  echo "[sei] ORPO certainty (prebuilt Claude/ChatGPT prefs), resume ship ORPO adapter"
+  export TRL_EXPERIMENTAL_SILENCE=1
+  if [[ -z "$RESUME_ADAPTER_S3" ]]; then
+    echo "[sei] ERROR: orpo_certainty requires SEI_RESUME_ADAPTER_S3 (sei-adapter-orpo)" >&2
+    exit 3
+  fi
+  RESUME_DEST="checkpoints/sei-orpo-disposition/adapter"
+  pull_resume_adapter "$RESUME_DEST"
+
+  CERT_SRC="${CERTAINTY_S3:-}"
+  if [[ -z "$CERT_SRC" && -n "$BUCKET" ]]; then
+    CERT_SRC="s3://${BUCKET}/certainty_synth/"
+  fi
+  if [[ -z "$CERT_SRC" ]]; then
+    echo "[sei] ERROR: set SEI_CERTAINTY_S3 or SEI_S3_BUCKET for certainty prefs" >&2
+    exit 3
+  fi
+  echo "[sei] syncing certainty prefs from $CERT_SRC"
+  mkdir -p data/processed/certainty_synth
+  aws s3 sync "$CERT_SRC" data/processed/certainty_synth/
+  if [[ ! -f data/processed/certainty_synth/merged_orpo_train.jsonl ]]; then
+    echo "[sei] ERROR: missing data/processed/certainty_synth/merged_orpo_train.jsonl" >&2
+    exit 3
+  fi
+
+  python - <<'PY'
+import yaml
+from pathlib import Path
+cfg = yaml.safe_load(Path("configs/orpo_certainty.yaml").read_text())
+cfg["resume_adapter"] = "checkpoints/sei-orpo-disposition/adapter"
+cfg["output_dir"] = "checkpoints/sei-orpo-certainty"
+cfg["preference_file"] = "data/processed/certainty_synth/merged_orpo_train.jsonl"
+cfg["use_existing_preferences"] = True
+Path("configs/orpo_certainty_aws.yaml").write_text(yaml.safe_dump(cfg))
+print(cfg)
+PY
+  python scripts/train_orpo.py --config configs/orpo_certainty_aws.yaml
+
+  if [[ -n "$ADAPTER_S3" ]]; then
+    echo "[sei] syncing certainty ORPO adapter → $ADAPTER_S3"
+    aws s3 sync checkpoints/sei-orpo-certainty/adapter/ "$ADAPTER_S3"
+  fi
+  if [[ -n "$BUCKET" ]]; then
+    echo "ORPO_CERTAINTY_OK" | aws s3 cp - "s3://${BUCKET}/sei-logs/ORPO_CERTAINTY_OK"
+  fi
+
 elif [[ "$MODE" == "consolidate" ]]; then
   echo "[sei] CONSOLIDATE (TP replay + disposition mix after ORPO)"
   if [[ -z "$RESUME_ADAPTER_S3" ]]; then
@@ -593,7 +642,7 @@ elif [[ "$MODE" == "consolidate" ]]; then
   fi
 
 else
-  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition|orpo|consolidate)" >&2
+  echo "Unknown SEI_MODE=$MODE (use smoke|full|stage1|stage2|attack|ood|disposition|orpo|orpo_certainty|consolidate)" >&2
   exit 2
 fi
 

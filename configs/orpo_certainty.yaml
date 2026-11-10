@@ -1,0 +1,19 @@
+# ORPO on normalized certainty synth (Claude + capped ChatGPT).
+# Resume from ship ORPO adapter — not consolidate.
+base_model: fdtn-ai/Foundation-Sec-8B
+train_file: data/processed/certainty_synth/merged_sft_train.jsonl
+preference_file: data/processed/certainty_synth/merged_orpo_train.jsonl
+use_existing_preferences: true
+output_dir: checkpoints/sei-orpo-certainty
+resume_adapter: checkpoints/sei-orpo-disposition/adapter
+epochs: 1
+max_steps: 200
+lr: 5.0e-6
+batch_size: 1
+grad_accum: 8
+beta: 0.1
+max_length: 4096
+max_completion_length: 1024
+lora_r: 32
+lora_alpha: 64
+dry_run: false
